@@ -224,6 +224,9 @@ namespace Core
             Shared.Startup.Configure(null, new NativeWebSocket());
 
             #region load modules
+
+            ModuleRepository.UpdateModules();
+
             var skipCompilationFolders = new HashSet<string>(mods.SkipModules ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
 
             foreach (string modfolder in new string[] { "mods", "module" })
