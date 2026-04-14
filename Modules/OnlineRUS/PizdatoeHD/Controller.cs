@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Playwright;
 using Shared;
 using Shared.Models;
@@ -33,7 +34,7 @@ namespace PizdatoeHD
 
         [HttpGet]
         [Route("lite/pizdatoehd")]
-        async public Task<ActionResult> Index(string imdb_id, long kinopoisk_id, string title, string original_title, int clarification, int year, int s = -1, string href = null, bool rjson = false, int serial = -1, bool similar = false, string source = null, string id = null)
+        async public Task<ActionResult> Index(string imdb_id, long kinopoisk_id, string title, string original_title, int clarification, int year, int s = -1, string href = null, bool rjson = false, bool similar = false)
         {
             if (await IsRequestBlocked(rch: false))
                 return badInitMsg;
@@ -41,184 +42,248 @@ namespace PizdatoeHD
             if (string.IsNullOrWhiteSpace(href) && string.IsNullOrWhiteSpace(title))
                 return OnError();
 
-            using (var browser = new PlaywrightBrowser(init.priorityBrowser))
+            #region search
+            if (string.IsNullOrEmpty(href))
             {
-                var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: true).ConfigureAwait(false);
-                if (page == null)
-                    return OnError("page");
+                CacheResult<SearchModel> search;
 
-                #region search
-                if (string.IsNullOrEmpty(href))
+                string _kp = kinopoisk_id.ToString();
+                var dbEntry = ModInit.PizdatoeDb.Where(e => (imdb_id != null && e.Value.imdb == imdb_id) || e.Value.kp == _kp);
+                if (dbEntry.Any())
                 {
-                    CacheResult<SearchModel> search;
-
-                    string _kp = kinopoisk_id.ToString();
-                    var dbEntry = ModInit.PizdatoeDb.Where(e => (imdb_id != null && e.Value.imdb == imdb_id) || e.Value.kp == _kp);
-                    if (dbEntry.Any())
+                    var model = new SearchModel()
                     {
-                        var model = new SearchModel()
-                        {
-                            similar = new List<SimilarModel>()
-                        };
+                        similar = new List<SimilarModel>()
+                    };
 
-                        foreach (var entry in dbEntry)
+                    foreach (var entry in dbEntry)
+                    {
+                        model.similar.Add(new SimilarModel()
                         {
-                            model.similar.Add(new SimilarModel()
-                            {
-                                title = entry.Value.title,
-                                year = entry.Value.year,
-                                href = entry.Value.href,
-                                img = entry.Value.img
-                            });
-                        }
-
-                        if (model.similar.Count == 1)
-                            model.href = model.similar[0].href;
-
-                        search = new CacheResult<SearchModel>()
-                        {
-                            IsSuccess = true,
-                            Value = model
-                        };
+                            title = entry.Value.title,
+                            year = entry.Value.year,
+                            href = entry.Value.href,
+                            img = entry.Value.img
+                        });
                     }
-                    else
+
+                    if (model.similar.Count == 1)
+                        model.href = model.similar[0].href;
+
+                    search = new CacheResult<SearchModel>()
                     {
-                        search = await InvokeCacheResult<SearchModel>($"pizdatoehd:search:{title}:{original_title}:{clarification}:{year}", 240, textJson: true, onget: async e =>
+                        IsSuccess = true,
+                        Value = model
+                    };
+                }
+                else
+                {
+                    search = await InvokeCacheResult<SearchModel>($"pizdatoehd:search:{title}:{original_title}:{clarification}:{year}", 240, textJson: true, onget: async e =>
+                    {
+                        try
                         {
                             string search_uri = $"{init.host}/search/?do=search&subaction=search&q={HttpUtility.UrlEncode(clarification == 1 ? title : (original_title ?? title))}";
 
-                            var result = await page.GotoAsync(search_uri, new PageGotoOptions() { WaitUntil = WaitUntilState.DOMContentLoaded });
-                            if (result == null)
-                                return e.Fail("не удалось загрузить страницу", refresh_proxy: true);
-
-                            string html = await result.TextAsync();
-                            if (string.IsNullOrEmpty(html))
-                                return e.Fail("не удалось получить содержимое страницы");
-
-                            var content = oninvk.Search(search_uri, html, title, original_title, year);
-                            if (content == null || content.IsError)
-                                return e.Fail(string.Empty, refresh_proxy: true);
-
-                            if (content.IsEmpty)
+                            using (var browser = new PlaywrightBrowser(init.priorityBrowser))
                             {
-                                if (rch.enable || content.content != null)
-                                    return e.Fail(content.content ?? "content");
+                                var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: true).ConfigureAwait(false);
+                                if (page == null)
+                                    return e.Fail("page");
+
+                                var result = await page.GotoAsync(search_uri, new PageGotoOptions()
+                                {
+                                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                                    Timeout = 10_000
+                                });
+
+                                if (result == null)
+                                    return e.Fail("не удалось загрузить страницу", refresh_proxy: true);
+
+                                string html = await result.TextAsync();
+                                if (string.IsNullOrEmpty(html))
+                                    return e.Fail("не удалось получить содержимое страницы");
+
+                                var content = oninvk.Search(html, title, original_title, year);
+                                if (content == null || content.IsError)
+                                    return e.Fail(string.Empty, refresh_proxy: true);
+
+                                if (content.IsEmpty)
+                                {
+                                    if (rch.enable || content.content != null)
+                                        return e.Fail(content.content ?? "content");
+                                }
+
+                                return e.Success(content);
                             }
-
-                            return e.Success(content);
-                        });
-                    }
-
-                    if (search.ErrorMsg != null)
-                        return ShowError(string.IsNullOrEmpty(search.ErrorMsg) ? "поиск не дал результатов" : search.ErrorMsg);
-
-                    if (similar || string.IsNullOrEmpty(search.Value?.href))
-                    {
-                        if (search.Value?.IsEmpty == true)
-                            return ShowError(search.Value.content ?? "поиск не дал результатов");
-
-                        return ContentTpl(search, () =>
+                        }
+                        catch
                         {
-                            if (search.Value.similar == null)
-                                return default;
-
-                            var stpl = new SimilarTpl(search.Value.similar.Count);
-                            string enc_title = HttpUtility.UrlEncode(title);
-                            string enc_original_title = HttpUtility.UrlEncode(original_title);
-
-                            foreach (var similar in search.Value.similar)
-                            {
-                                string link = $"{host}/lite/pizdatoehd?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&href={HttpUtility.UrlEncode(similar.href)}";
-
-                                stpl.Append(similar.title, similar.year, string.Empty, link, PosterApi.Size(similar.img));
-                            }
-
-                            return stpl;
-                        });
-                    }
-
-                    href = search.Value.href;
+                            return e.Fail("catch");
+                        }
+                    });
                 }
-                #endregion
 
-                var cache = await InvokeCacheResult<Model>($"pizdatoehd:{href}", 15, async e =>
+                if (search.ErrorMsg != null)
+                    return ShowError(string.IsNullOrEmpty(search.ErrorMsg) ? "поиск не дал результатов" : search.ErrorMsg);
+
+                if (similar || string.IsNullOrEmpty(search.Value?.href))
                 {
-                    var result = await page.GotoAsync($"{init.host}/{href}", new PageGotoOptions() { WaitUntil = WaitUntilState.DOMContentLoaded });
-                    if (result == null)
-                        return e.Fail("не удалось загрузить страницу", refresh_proxy: true);
+                    if (search.Value?.IsEmpty == true)
+                        return ShowError(search.Value.content ?? "поиск не дал результатов");
 
-                    string html = await result.TextAsync();
-                    if (string.IsNullOrEmpty(html))
-                        return e.Fail("не удалось получить содержимое страницы");
+                    return ContentTpl(search, () =>
+                    {
+                        if (search.Value.similar == null)
+                            return default;
 
-                    var content = oninvk.Embed(href, html);
-                    if (content == null)
-                        return e.Fail("не удалось распарсить страницу");
+                        var stpl = new SimilarTpl(search.Value.similar.Count);
+                        string enc_title = HttpUtility.UrlEncode(title);
+                        string enc_original_title = HttpUtility.UrlEncode(original_title);
 
-                    return e.Success(content);
-                });
+                        foreach (var similar in search.Value.similar)
+                        {
+                            string link = $"{host}/lite/pizdatoehd?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&href={HttpUtility.UrlEncode(similar.href)}";
 
-                if (cache.Value?.IsEmpty == true)
-                    return ShowError(cache.Value.content);
+                            stpl.Append(similar.title, similar.year, string.Empty, link, PosterApi.Size(similar.img));
+                        }
 
-                return ContentTpl(cache,
-                    () => oninvk.Tpl(cache.Value, accsArgs(string.Empty), title, original_title, s, href, rjson)
-                );
+                        return stpl;
+                    });
+                }
+
+                href = search.Value.href;
             }
+            #endregion
+
+            #region news
+            var cache = await InvokeCacheResult<Model>($"pizdatoehd:{href}", 15, async e =>
+            {
+                try
+                {
+                    using (var browser = new PlaywrightBrowser(init.priorityBrowser))
+                    {
+                        var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: true).ConfigureAwait(false);
+                        if (page == null)
+                            return e.Fail("page");
+
+                        var result = await page.GotoAsync($"{init.host}/{href}", new PageGotoOptions()
+                        {
+                            WaitUntil = WaitUntilState.DOMContentLoaded,
+                            Timeout = 10_000
+                        });
+
+                        if (result == null)
+                            return e.Fail("не удалось загрузить страницу", refresh_proxy: true);
+
+                        string html = await result.TextAsync();
+                        if (string.IsNullOrEmpty(html))
+                            return e.Fail("не удалось получить содержимое страницы");
+
+                        var content = oninvk.Embed(href, html);
+                        if (content == null)
+                            return e.Fail("не удалось распарсить страницу");
+
+                        return e.Success(content);
+                    }
+                }
+                catch
+                {
+                    return e.Fail("catch");
+                }
+            });
+            #endregion
+
+            if (cache.Value?.IsEmpty == true)
+                return ShowError(cache.Value.content);
+
+            return ContentTpl(cache,
+                () => oninvk.Tpl(cache.Value, accsArgs(string.Empty), title, original_title, s, href, rjson)
+            );
         }
 
         #region Movie
         [HttpGet]
         [Route("lite/pizdatoehd/movie")]
         [Route("lite/pizdatoehd/movie.m3u8")]
-        async public Task<ActionResult> Movie(string title, string original_title, string voice, long id, int t, int director = 0, int s = -1, int e = -1, string favs = null, bool play = false)
+        async public Task<ActionResult> Movie(string title, string original_title, string href, string voice, int director, int t, int s = -1, int e = -1, bool play = false)
         {
             if (await IsRequestBlocked(rch: false))
                 return badInitMsg;
 
-            using (var browser = new PlaywrightBrowser(init.priorityBrowser))
+            var cache = await InvokeCacheResult<MovieModel>(ipkey($"pizdatoehd:movie:{voice}:{href}:{t}:{s}:{e}"), 20, async result =>
             {
-                var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: true).ConfigureAwait(false);
-                if (page == null)
-                    return OnError("page");
-
-                var cache = await InvokeCacheResult<MovieModel>(ipkey($"pizdatoehd:movie:{voice}"), 20, async e =>
+                using (var browser = new PlaywrightBrowser(init.priorityBrowser))
                 {
-                    var result = await page.GotoAsync($"{init.host}/{voice}", new PageGotoOptions() { WaitUntil = WaitUntilState.DOMContentLoaded });
-                    if (result == null)
-                        return e.Fail("не удалось загрузить страницу", refresh_proxy: true);
+                    try
+                    {
+                        var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: true).ConfigureAwait(false);
+                        if (page == null)
+                            return result.Fail("page");
 
-                    string html = await result.TextAsync();
-                    if (string.IsNullOrEmpty(html))
-                        return e.Fail("не удалось получить содержимое страницы");
+                        if (string.IsNullOrEmpty(voice))
+                        {
+                            page.Response += async (s, e) =>
+                            {
+                                if (e.Request.Method == "POST" && e.Request.Url.Contains("/get_cdn_series/"))
+                                {
+                                    string json = await e.TextAsync();
+                                    browser.SetPageResult(json);
+                                }
+                            };
 
-                    var content = oninvk.Movie(html);
-                    if (content == null)
-                        return e.Fail("не удалось распарсить страницу");
+                            PlaywrightBase.GotoAsync(page, $"{init.host}/{href}#t:{t}-s:{s}-e:{e}");
 
-                    return e.Success(content);
-                });
+                            string json = await browser.WaitPageResult(10);
+                            if (string.IsNullOrEmpty(json))
+                                return result.Fail("не удалось получить содержимое страницы");
 
-                //if (md == null)
-                //{
-                //    md = await InvokeCache(ipkey($"rezka:view:get_cdn_series:{id}:{t}:{director}:{s}:{e}"), 20,
-                //        () => oninvk.Movie(id, t, director, s, e, favs),
-                //        textJson: true
-                //    );
-                //}
+                            var content = oninvk.AjaxMovie(json);
+                            if (content == null)
+                                return result.Fail("не удалось распарсить страницу");
 
-                if (cache.Value?.links == null || cache.Value.links.Count == 0)
-                    return OnError();
+                            return result.Success(content);
+                        }
+                        else
+                        {
+                            var page_result = await page.GotoAsync($"{init.host}/{voice}", new PageGotoOptions()
+                            {
+                                WaitUntil = WaitUntilState.DOMContentLoaded,
+                                Timeout = 10_000
+                            });
 
-                string result = oninvk.Movie(cache.Value, title, original_title, play, vast: init.vast);
-                if (result == null)
-                    return OnError();
+                            if (page_result == null)
+                                return result.Fail("не удалось загрузить страницу", refresh_proxy: true);
 
-                if (play)
-                    return RedirectToPlay(result);
+                            string html = await page_result.TextAsync();
+                            if (string.IsNullOrEmpty(html))
+                                return result.Fail("не удалось получить содержимое страницы");
 
-                return ContentTo(result);
-            }
+                            var content = oninvk.Movie(html);
+                            if (content == null)
+                                return result.Fail("не удалось распарсить страницу");
+
+                            return result.Success(content);
+                        }
+                    }
+                    catch
+                    {
+                        return result.Fail("catch");
+                    }
+                }
+            });
+
+            if (cache.Value?.links == null || cache.Value.links.Count == 0)
+                return OnError();
+
+            string result = oninvk.Movie(cache.Value, title, original_title, play, vast: init.vast);
+            if (result == null)
+                return OnError();
+
+            if (play)
+                return RedirectToPlay(result);
+
+            return ContentTo(result);
+
         }
         #endregion
     }

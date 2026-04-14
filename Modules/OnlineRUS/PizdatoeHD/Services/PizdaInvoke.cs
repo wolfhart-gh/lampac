@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using Shared.Models.Base;
 using Shared.Models.Online.Settings;
 using Shared.Models.Templates;
@@ -35,12 +36,9 @@ namespace PizdatoeHD
         #endregion
 
         #region Search
-        public SearchModel Search(string search_uri, string html, string title, string original_title, int year)
+        public SearchModel Search(string html, string title, string original_title, int year)
         {
-            var result = new SearchModel
-            {
-                search_uri = search_uri
-            };
+            var result = new SearchModel();
 
             string reservedlink = null;
 
@@ -176,6 +174,41 @@ namespace PizdatoeHD
         #endregion
 
         #region Movie
+        public MovieModel AjaxMovie(string json)
+        {
+            Dictionary<string, object> root = null;
+
+            try
+            {
+               root = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+            }
+            catch { }
+
+            if (root == null)
+                return null;
+
+            string url = root.ContainsKey("url") ? root["url"]?.ToString() : null;
+            if (string.IsNullOrEmpty(url) || url.Contains("false", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var links = getStreamLink(url);
+            if (links.Count == 0)
+                return null;
+
+            string subtitlehtml = null;
+
+            try
+            {
+                subtitlehtml = root?["subtitle"]?.ToString();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "CatchId={CatchId}", "id_0jizyv93");
+            }
+
+            return new MovieModel() { links = links, subtitlehtml = subtitlehtml };
+        }
+
         public MovieModel Movie(string html)
         {
             List<ApiModel> links = null;
@@ -343,7 +376,10 @@ namespace PizdatoeHD
 
                         string voice_href = Regex.Match(match.Groups[0].Value, "href=\"(https?://[^/]+)?/([^\"]+)\"").Groups[2].Value;
                         if (string.IsNullOrEmpty(voice_href))
+                        {
+                            match = match.NextMatch();
                             continue;
+                        }
 
                         string voice = HttpUtility.UrlEncode(voice_href);
                         string link = host + $"{route}?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&href={voice}&t={match.Groups["translator"].Value}";
@@ -383,13 +419,10 @@ namespace PizdatoeHD
                         #region Серии
                         if (m.Groups["season"].Value == sArhc && !eshash.Contains(m.Groups["name"].Value))
                         {
-                            string voice_href = Regex.Match(m.Groups[0].Value, "href=\"(https?://[^/]+)?/([^\"]+)\"").Groups[2].Value;
-                            if (string.IsNullOrEmpty(voice_href))
-                                continue;
-
                             eshash.Add(m.Groups["name"].Value);
 
-                            string link = host + $"{route}/movie?title={enc_title}&original_title={enc_original_title}&voice={HttpUtility.UrlEncode(voice_href)}&t={result.trs}&s={s}&e={m.Groups["episode"].Value}";
+                            string voice_href = Regex.Match(m.Groups[0].Value, "href=\"(https?://[^/]+)?/([^\"]+)\"").Groups[2].Value;
+                            string link = host + $"{route}/movie?title={enc_title}&original_title={enc_original_title}&href={enc_href}&voice={HttpUtility.UrlEncode(voice_href)}&t={result.trs}&s={s}&e={m.Groups["episode"].Value}";
 
                             string stream = usehls ? $"{link.Replace("/movie", "/movie.m3u8")}&play=true" : $"{link}&play=true";
                             stream += args;

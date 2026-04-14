@@ -28,8 +28,6 @@ namespace PizdatoeHD
 
         public string href { get; set; }
 
-        public string search_uri { get; set; }
-
         public List<SimilarModel> similar { get; set; }
     }
 
