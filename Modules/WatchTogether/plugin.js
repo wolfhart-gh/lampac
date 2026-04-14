@@ -1,6 +1,12 @@
 (function () {
     'use strict';
 
+    if (window.watchtogether_plugin_started) {
+        console.log('[WT] Plugin already running, aborting second start.');
+        return;
+    }
+    window.watchtogether_plugin_started = true;
+
     console.log('[WT] Plugin initialization started.');
 
     var unic_id = Lampa.Storage.get('lampac_unic_id', '');
@@ -355,7 +361,10 @@
     }
 
     setInterval(function () {
-        if (!inRoom) return;
+        if (!inRoom) {
+            $('.wt-room-badge').remove();
+            return;
+        }
 
         var vid = getVideo();
 
