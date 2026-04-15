@@ -9,6 +9,53 @@
 
     console.log('[WT] Plugin initialization started.');
 
+    var _rawLang = (Lampa.Storage.get('language') || 'en').toLowerCase();
+    var i18n = {
+        ru: {
+            create_fail: 'Не удалось создать комнату WatchTogether',
+            create_err: 'Ошибка сервера при создании комнаты',
+            no_movie_id: 'Ошибка: сервер не вернул ID фильма',
+            room_not_found: function (id) { return 'Комната ' + id + ' не найдена'; },
+            join_err: 'Ошибка сервера при получении данных комнаты',
+            joined_room: function (id) { return 'Вы вошли в комнату: ' + id; },
+            input_title: 'ID Комнаты',
+            badge_room: 'Комната',
+            badge_viewers: 'Зрителей',
+            kicked: 'Вы вошли в эту комнату с другого устройства.',
+            copied: function (id) { return 'ID комнаты скопирован: ' + id; },
+            click_to_copy: 'Нажмите чтобы скопировать'
+        },
+        en: {
+            create_fail: 'Failed to create WatchTogether room',
+            create_err: 'Server error while creating room',
+            no_movie_id: 'Error: server did not return movie ID',
+            room_not_found: function (id) { return 'Room ' + id + ' not found'; },
+            join_err: 'Server error while fetching room data',
+            joined_room: function (id) { return 'You joined room: ' + id; },
+            input_title: 'Room ID',
+            badge_room: 'Room',
+            badge_viewers: 'Viewers',
+            kicked: 'You joined this room from another device.',
+            copied: function (id) { return 'Room ID copied: ' + id; },
+            click_to_copy: 'Click to copy'
+        },
+        uk: {
+            create_fail: 'Не вдалося створити кімнату WatchTogether',
+            create_err: 'Помилка сервера під час створення кімнати',
+            no_movie_id: 'Помилка: сервер не повернув ID фільму',
+            room_not_found: function (id) { return 'Кімнату ' + id + ' не знайдено'; },
+            join_err: 'Помилка сервера під час отримання даних кімнати',
+            joined_room: function (id) { return 'Ви увійшли до кімнати: ' + id; },
+            input_title: 'ID Кімнати',
+            badge_room: 'Кімната',
+            badge_viewers: 'Глядачів',
+            kicked: 'Ви увійшли до цієї кімнати з іншого пристрою.',
+            copied: function (id) { return 'ID кімнати скопійовано: ' + id; },
+            click_to_copy: 'Натисніть щоб скопіювати'
+        }
+    };
+    var T = i18n[_rawLang] || i18n['en'];
+
     var unic_id = Lampa.Storage.get('lampac_unic_id', '');
     if (!unic_id) {
         unic_id = Lampa.Utils.uid(8).toLowerCase();
@@ -72,11 +119,11 @@
             if (res && res.id) {
                 joinRoom(res.id, card);
             } else {
-                Lampa.Noty.show('Не удалось создать комнату WatchTogether');
+                Lampa.Noty.show(T.create_fail);
             }
         }, function (a, c) {
             console.error('[WT] createRoom Network Error:', a, c);
-            Lampa.Noty.show('Ошибка сервера при создании комнаты');
+            Lampa.Noty.show(T.create_err);
         });
     }
 
@@ -136,14 +183,14 @@
                     });
                 }
                 else {
-                    Lampa.Noty.show('Ошибка: сервер не вернул ID фильма');
+                    Lampa.Noty.show(T.no_movie_id);
                 }
             } else {
-                Lampa.Noty.show('Комната ' + roomId + ' не найдена');
+                Lampa.Noty.show(T.room_not_found(roomId));
             }
         }, function (a, c) {
             console.error('[WT] joinRoom Network Error:', a, c);
-            Lampa.Noty.show('Ошибка сервера при получении данных комнаты');
+            Lampa.Noty.show(T.join_err);
         });
     }
 
@@ -156,7 +203,7 @@
         targetInitialState = { state: state || 'paused', position: position || 0 };
         console.log('[WT] Initial Sync Lock ENGAGED. Target:', targetInitialState);
 
-        Lampa.Noty.show('Вы вошли в комнату: ' + roomId);
+        Lampa.Noty.show(T.joined_room(roomId));
 
         if (ws && ws.readyState === 1) {
             ws.send(JSON.stringify({
@@ -182,7 +229,7 @@
 
     function showJoinMenu() {
         Lampa.Input.edit({
-            title: 'ID Комнаты',
+            title: T.input_title,
             value: '',
             free: true,
             nosave: true
@@ -203,6 +250,17 @@
         return vid;
     }
 
+    function copyRoomId() {
+        if (!currentRoomId) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(currentRoomId).then(function () {
+                Lampa.Noty.show(T.copied(currentRoomId));
+            }).catch(function (err) {
+                console.error('[WT] Copy failed', err);
+            });
+        }
+    }
+
     function updateRoomUI(count) {
         if (!inRoom || !currentRoomId) return;
         var nameContainer = $('.player-info__name, .player-panel__name');
@@ -210,42 +268,57 @@
         if (count !== undefined) currentRoomMemberCount = count;
 
         if (nameContainer.length && !$('.wt-room-badge').length) {
-            nameContainer.after('<div class="wt-room-badge" style="display:inline-block; margin-left: 15px; padding: 4px 12px; background: rgba(255,255,255,0.15); border-radius: 6px; font-size: 0.85em; color: #fff;"></div>');
+            var badge = $('<div class="wt-room-badge" style="display:inline-block; margin-left: 15px; padding: 4px 12px; background: rgba(255,255,255,0.15); border-radius: 6px; font-size: 0.85em; color: #fff; cursor: pointer;"></div>');
+            badge.on('click hover:enter', copyRoomId);
+            nameContainer.after(badge);
         }
 
         if ($('.wt-room-badge').length) {
-            $('.wt-room-badge').html('Комната: <b style="color:#00e676;">' + currentRoomId + '</b> | Зрителей: <b>' + currentRoomMemberCount + '</b>');
+            $('.wt-room-badge').html(T.badge_room + ': <b style="color:#00e676;" title="' + T.click_to_copy + '">' + currentRoomId + '</b> | ' + T.badge_viewers + ': <b>' + currentRoomMemberCount + '</b>');
         }
     }
 
     function applySync(vid, state, position) {
-        if (vid.currentTime !== undefined) {
-            var diff = Math.abs(vid.currentTime - position);
-            console.log('[WT] Adjusting sync. Server State:', state, '| Server Pos:', position, '| Local Pos:', vid.currentTime, '| Diff:', diff);
+        if (vid.currentTime === undefined) return;
 
-            if (diff > 3) {
-                expectedState.seek = position;
-                vid.currentTime = position;
-                console.log('[WT] Seeked local video to', position);
+        var diff = vid.currentTime - position;
+        var absDiff = Math.abs(diff);
+
+        console.log('[WT] Sync. State:', state, '| Server Pos:', position, '| Local Pos:', vid.currentTime, '| Diff:', diff);
+
+        if (absDiff > 5) {
+            expectedState.seek = position;
+            vid.currentTime = position;
+            console.log('[WT] Hard seeked local video to', position);
+        } else if (absDiff > 1) {
+            var rate = diff > 0 ? 0.92 : 1.08;
+            vid.playbackRate = rate;
+            var correctionMs = (absDiff / 0.08) * 1000;
+            console.log('[WT] Soft rate correction:', rate, 'for', Math.round(correctionMs), 'ms');
+            if (vid._wt_rate_timeout) clearTimeout(vid._wt_rate_timeout);
+            vid._wt_rate_timeout = setTimeout(function () {
+                vid._wt_rate_timeout = null;
+                if (vid.playbackRate !== 1) vid.playbackRate = 1;
+            }, Math.min(correctionMs, 12000));
+        }
+
+        if (state === 'playing' && vid.paused) {
+            expectedState.play = true;
+            console.log('[WT] Forcing play via Lampa API...');
+            if (typeof Lampa.PlayerVideo !== 'undefined' && Lampa.PlayerVideo.play) {
+                Lampa.PlayerVideo.play();
+            } else {
+                var playPromise = vid.play();
+                if (playPromise !== undefined) playPromise.catch(function (err) { });
             }
-
-            if (state === 'playing' && vid.paused) {
-                expectedState.play = true;
-                console.log('[WT] Forcing play via Lampa API...');
-                if (typeof Lampa.PlayerVideo !== 'undefined' && Lampa.PlayerVideo.play) {
-                    Lampa.PlayerVideo.play();
-                } else {
-                    var playPromise = vid.play();
-                    if (playPromise !== undefined) playPromise.catch(function (err) { });
-                }
-            } else if (state === 'paused' && !vid.paused) {
-                expectedState.pause = true;
-                console.log('[WT] Forcing pause via Lampa API...');
-                if (typeof Lampa.PlayerVideo !== 'undefined' && Lampa.PlayerVideo.pause) {
-                    Lampa.PlayerVideo.pause();
-                } else {
-                    vid.pause();
-                }
+        } else if (state === 'paused' && !vid.paused) {
+            expectedState.pause = true;
+            vid.playbackRate = 1;
+            console.log('[WT] Forcing pause via Lampa API...');
+            if (typeof Lampa.PlayerVideo !== 'undefined' && Lampa.PlayerVideo.pause) {
+                Lampa.PlayerVideo.pause();
+            } else {
+                vid.pause();
             }
         }
     }
@@ -311,7 +384,7 @@
                 if (data.method == 'watchtogether_members') {
                     updateRoomUI(data.args[0]);
                 } else if (data.method == 'watchtogether_kicked') {
-                    Lampa.Noty.show('Вы вошли в эту комнату с другого устройства.');
+                    Lampa.Noty.show(T.kicked);
                     inRoom = false;
                     currentRoomId = null;
                 } else if (data.method == 'watchtogether_sync_update') {
@@ -443,6 +516,9 @@
                 });
 
                 vid.addEventListener('pause', function () {
+                    if (vid._wt_rate_timeout) { clearTimeout(vid._wt_rate_timeout); vid._wt_rate_timeout = null; }
+                    vid.playbackRate = 1;
+
                     if (initialSyncLock) return;
 
                     var wasExpected = expectedState.pause;
@@ -456,6 +532,11 @@
                 });
 
                 vid.addEventListener('seeked', function () {
+                    if (!isSystemSyncing) {
+                        if (vid._wt_rate_timeout) { clearTimeout(vid._wt_rate_timeout); vid._wt_rate_timeout = null; }
+                        vid.playbackRate = 1;
+                    }
+
                     if (initialSyncLock) {
                         console.log('[WT] Blocking Lampa Local Seek. Restoring server position.');
                         if (targetInitialState && Math.abs(vid.currentTime - targetInitialState.position) > 2) {
@@ -508,7 +589,11 @@
             }
 
             var vidToUnhook = getVideo();
-            if (vidToUnhook) vidToUnhook._wt_hooked = false;
+            if (vidToUnhook) {
+                vidToUnhook._wt_hooked = false;
+                if (vidToUnhook._wt_rate_timeout) { clearTimeout(vidToUnhook._wt_rate_timeout); vidToUnhook._wt_rate_timeout = null; }
+                vidToUnhook.playbackRate = 1;
+            }
 
             expectedState.play = false;
             expectedState.pause = false;
