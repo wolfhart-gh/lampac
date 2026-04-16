@@ -189,7 +189,7 @@ namespace Shared.PlaywrightCore
 
 
 
-        async public static Task<string> Get(BaseSettings init, string url, List<HeadersModel> headers = null, (string ip, string username, string password) proxy = default, List<Cookie> cookies = null)
+        async public static Task<string> Get(BaseSettings init, string url, List<HeadersModel> headers = null, (string ip, string username, string password) proxy = default, List<Cookie> cookies = null, bool viewsource = true)
         {
             IResponse response = default;
             string result = null;
@@ -211,7 +211,7 @@ namespace Shared.PlaywrightCore
                     }
                     else
                     {
-                        response = await page.GotoAsync($"view-source:{url}", new PageGotoOptions()
+                        response = await page.GotoAsync(viewsource ? $"view-source:{url}" : url, new PageGotoOptions()
                         {
                             Timeout = 10_000,
                             WaitUntil = WaitUntilState.DOMContentLoaded

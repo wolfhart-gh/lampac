@@ -111,9 +111,11 @@ namespace PizdatoeHD
 
         async static Task<bool> Parse(int page, WebProxy proxy)
         {
+            string pgUri = page == 1 ? ModInit.conf.host : $"{ModInit.conf.host}/page/{page}/";
+
             string mainHtml = proxy != null
-                ? await Http.Get($"{ModInit.conf.host}/page/{page}/", proxy: proxy, timeoutSeconds: 4)
-                : await PlaywrightBrowser.Get(ModInit.conf, $"{ModInit.conf.host}/page/{page}/");
+                ? await Http.Get(pgUri, proxy: proxy, timeoutSeconds: 4)
+                : await PlaywrightBrowser.Get(ModInit.conf, pgUri, viewsource: false);
 
             if (mainHtml == null || !mainHtml.Contains("class=\"b-content__inline_item\""))
                 return default;
@@ -135,7 +137,7 @@ namespace PizdatoeHD
 
                 string news = proxy != null
                     ? await Http.Get($"{ModInit.conf.host}/{link}", proxy: proxy, timeoutSeconds: 10)
-                    : await PlaywrightBrowser.Get(ModInit.conf, $"{ModInit.conf.host}/{link}");
+                    : await PlaywrightBrowser.Get(ModInit.conf, $"{ModInit.conf.host}/{link}", viewsource: false);
 
                 if (news != null)
                 {
