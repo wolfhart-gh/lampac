@@ -23,7 +23,7 @@ namespace AdultJS
         [Route("porngram")]
         async public Task<ActionResult> Index(string search, string sort, int pg = 1)
         {
-            if (await IsRequestBlocked(rch: false))
+            if (await IsRequestBlocked(rch: true))
                 return badInitMsg;
 
         rhubFallback:
@@ -56,7 +56,7 @@ namespace AdultJS
         {
             Console.WriteLine($"secret_uri: {DecryptQuery(secret_uri)}");
 
-            if (await IsRequestBlocked(rch: false))
+            if (await IsRequestBlocked(rch: true))
                 return badInitMsg;
 
         rhubFallback:
