@@ -59,10 +59,15 @@
 
   function waitEvent() {
     if (!window.nwsClient) window.nwsClient = {};
+    else if (window.nwsClient[hostkey] && window.nwsClient[hostkey].socket)
+      window.nwsClient[hostkey].socket.close();
+
     window.nwsClient[hostkey] = new NativeWsClient('{localhost}/nws', {
       autoReconnect: true
     });
+
     nwsClient = window.nwsClient[hostkey];
+
     nwsClient.on('Connected', function(connectionId) {
       window.lwsEvent.connectionId = connectionId;
 	  nwsClient.invoke("RegistryEvent", window.lwsEvent.uid);
@@ -70,9 +75,11 @@
 	  window.rch_nws[hostkey].connectionId = connectionId;
       sendEvent('system', 'connected');
     });
+
     nwsClient.on("event", function(uid, name, data) {
       sendEvent(name, data);
     });
+
     nwsClient.connect();
   }
 
