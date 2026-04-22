@@ -263,6 +263,21 @@ namespace Shared
         #endregion
 
         #region PlaylistResult
+        public ActionResult PlaylistResult(CacheResult<Channel> cache)
+        {
+            if (!cache.IsSuccess)
+                return OnError(cache.ErrorMsg);
+
+            var ch = cache.Value;
+
+            return PlaylistResult(
+                ch.list,
+                cache.ISingleCache,
+                ch.menu,
+                ch.total_pages
+            );
+        }
+
         public ActionResult PlaylistResult(CacheResult<List<PlaylistItem>> cache, IList<MenuItem> menu = null, int total_pages = 0)
         {
             if (!cache.IsSuccess)
