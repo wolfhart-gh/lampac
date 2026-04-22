@@ -169,8 +169,8 @@ namespace Storage
         [Route("/storage/temp/{key}")]
         async public Task<ActionResult> TempGet(string key, bool responseInfo)
         {
-            if (!ModInit.conf.enableTemp)
-                return ContentTo("{\"success\": false, \"msg\": \"storageTemp_disabled\"}");
+            if (!ModInit.conf.enableTemp || string.IsNullOrEmpty(key))
+                return ContentTo("{\"success\": false, \"msg\": \"403\"}");
 
             string outFile = getFilePath("temp", null, false, user_uid: key);
             if (outFile == null || !IO.File.Exists(outFile))
@@ -214,8 +214,8 @@ namespace Storage
         [Route("/storage/temp/{key}")]
         async public Task<ActionResult> TempSet(string key)
         {
-            if (!ModInit.conf.enableTemp)
-                return ContentTo("{\"success\": false, \"msg\": \"storageTemp_disabled\"}");
+            if (!ModInit.conf.enableTemp || string.IsNullOrEmpty(key))
+                return ContentTo("{\"success\": false, \"msg\": \"403\"}");
 
             if (HttpContext.Request.ContentLength > maxRequestSize)
                 return ContentTo("{\"success\": false, \"msg\": \"max_size\"}");
@@ -295,9 +295,6 @@ namespace Storage
         #region getFilePath
         string getFilePath(string path, string pathfile, bool createDirectory, string user_uid = null)
         {
-            if (path == "temp" && string.IsNullOrEmpty(user_uid))
-                return null;
-
             path = Regex.Replace(path, "[^a-z0-9\\-]", "", RegexOptions.IgnoreCase);
 
             string id = user_uid ?? requestInfo.user_uid;

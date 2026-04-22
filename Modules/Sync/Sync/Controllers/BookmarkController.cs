@@ -21,7 +21,7 @@ using Sync.Models;
 
 namespace Sync
 {
-    public class SyncController : BaseController
+    public class BookmarkController : BaseController
     {
         #region bookmark.js
         [HttpGet]
@@ -33,42 +33,6 @@ namespace Sync
             SetHeadersNoCache();
 
             string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/bookmark.js", "bookmark.js")
-                .Replace("{localhost}", host)
-                .Replace("{token}", HttpUtility.UrlEncode(token));
-
-            return Content(plugin, "application/javascript; charset=utf-8");
-        }
-        #endregion
-
-        #region sync.js
-        [HttpGet]
-        [AllowAnonymous]
-        [Route("sync.js")]
-        [Route("sync/js/{token}")]
-        public ActionResult SyncJS(string token, bool lite)
-        {
-            SetHeadersNoCache();
-
-            string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/sync_v2/sync.js", "sync.js")
-                .Replace("{sync-invc}", FileCache.ReadAllText($"{ModInit.modpath}/plugins/sync-invc.js", "sync-invc.js"))
-                .Replace("{localhost}", host)
-                .Replace("{token}", HttpUtility.UrlEncode(token));
-
-            return Content(plugin, "application/javascript; charset=utf-8");
-        }
-        #endregion
-
-        #region invc-ws.js
-        [HttpGet]
-        [AllowAnonymous]
-        [Route("invc-ws.js")]
-        [Route("invc-ws/js/{token}")]
-        public ActionResult InvcSyncJS(string token)
-        {
-            SetHeadersNoCache();
-
-            string plugin = FileCache.ReadAllText($"{ModInit.modpath}/plugins/sync_v2/invc-ws.js", "invc-ws.js")
-                .Replace("{invc-rch_nws}", FileCache.ReadAllText("plugins/invc-rch_nws.js", "invc-rch_nws.js"))
                 .Replace("{localhost}", host)
                 .Replace("{token}", HttpUtility.UrlEncode(token));
 
@@ -164,10 +128,10 @@ namespace Sync
                             if (string.IsNullOrWhiteSpace(where))
                                 return JsonFailure();
 
-                            if (IsDbInitialization /*&& AppInit.conf.sync_user.fullset == false*/)
+                            if (IsDbInitialization && ModInit.conf.fullset == false)
                             {
                                 if (where == "card" || BookmarkCategories.Contains(where))
-                                    return JsonFailure("enable sync_user.fullset in init.conf");
+                                    return JsonFailure("enable Sync.fullset in init.conf");
                             }
 
                             if (!job.TryGetValue("data", out var dataValue))
