@@ -1,3 +1,4 @@
+using Jint;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
@@ -1014,6 +1015,42 @@ namespace Shared
 
         public string DecryptQuery(ReadOnlySpan<char> value)
             => CrypTo.DecryptQuery(value);
+        #endregion
+
+        #region JSRuntime
+        public Engine JSRuntime(string jsFile)
+            => JSRuntime(jsFile, null);
+
+        public Engine JSRuntime(string jsFile, BaseSettings init, HttpHydra httpHydra = null, RchClient rch = null, WebProxy proxy = null)
+        {
+            var js = new Engine();
+            js.Execute(jsFile);
+
+            js.SetValue("log", new Action<object>(Console.WriteLine));
+            js.SetValue("encryptQuery", new Func<string, string>(url => EncryptQuery(url)));
+
+            if (init != null)
+            {
+                js.SetValue("streamProxy", new Func<string, Dictionary<string, string>, string>(
+                    (url, headers) => HostStreamProxy(init, url, HeadersModel.Init(headers), proxy, rch: rch)));
+
+                js.SetValue("imgProxy", new Func<string, int, string>((url, height) => HostImgProxy(init, url, height)));
+
+                if (httpHydra == null)
+                    httpHydra = new HttpHydra(init, httpHeaders(init), requestInfo, rch, proxy);
+            }
+
+            if (httpHydra == null)
+                httpHydra = new HttpHydra(new BaseSettings() { useproxy = proxy != null }, null, requestInfo, rch, proxy);
+
+            js.SetValue("httpGet", new Func<string, Dictionary<string, string>, Dictionary<string, string>, Task<string>>( 
+                (url, addheaders, newheaders) => httpHydra.Get(url, HeadersModel.Init(addheaders), HeadersModel.Init(newheaders))));
+
+            js.SetValue("httpPost", new Func<string, string, Dictionary<string, string>, Dictionary<string, string>, Task<string>>(
+                (url, data, addheaders, newheaders) => httpHydra.Post(url, data, HeadersModel.Init(addheaders), HeadersModel.Init(newheaders))));
+
+            return js;
+        }
         #endregion
 
         #region SetHeadersNoCache

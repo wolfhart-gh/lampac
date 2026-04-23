@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Jint;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
@@ -428,6 +429,11 @@ namespace Shared
             => InvkSemaphore(key, rch, func);
         #endregion
 
+
+        #region JSRuntime
+        new public Engine JSRuntime(string jsFile)
+            => JSRuntime(jsFile, init, httpHydra, rch, proxy);
+        #endregion
 
         #region cacheTime
         public TimeSpan cacheTime(int multiaccess)

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Jint;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json.Linq;
@@ -608,6 +609,11 @@ namespace Shared
 
         public ValueTask<CacheResult<Tresut>> InvokeCacheResult<Tresut>(string key, int cacheTime, Func<CacheResult<Tresut>, Task<CacheResult<Tresut>>> onget, bool? memory = null, JsonTypeInfo<Tresut> jsonType = null, bool textJson = false)
             => InvokeBaseCacheResult(key, this.cacheTime(cacheTime), rch, proxyManager, onget, memory, jsonType, textJson);
+        #endregion
+
+        #region JSRuntime
+        new public Engine JSRuntime(string jsFile)
+            => JSRuntime(jsFile, init, httpHydra, rch, proxy);
         #endregion
 
         #region ipkey
