@@ -179,7 +179,7 @@ namespace PizdatoeHD
                             if (await GotoLinkAsync(page, href))
                                 html = await page.ContentAsync();
                         }
-                        
+
                         if (html == null || !html.Contains("b-sidecover"))
                         {
                             if (page == null)

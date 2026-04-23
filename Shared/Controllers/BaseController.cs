@@ -1043,7 +1043,7 @@ namespace Shared
             if (httpHydra == null)
                 httpHydra = new HttpHydra(new BaseSettings() { useproxy = proxy != null }, null, requestInfo, rch, proxy);
 
-            js.SetValue("httpGet", new Func<string, Dictionary<string, string>, Dictionary<string, string>, Task<string>>( 
+            js.SetValue("httpGet", new Func<string, Dictionary<string, string>, Dictionary<string, string>, Task<string>>(
                 (url, addheaders, newheaders) => httpHydra.Get(url, HeadersModel.Init(addheaders), HeadersModel.Init(newheaders))));
 
             js.SetValue("httpPost", new Func<string, string, Dictionary<string, string>, Dictionary<string, string>, Task<string>>(
