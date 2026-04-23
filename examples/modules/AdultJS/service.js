@@ -1,8 +1,4 @@
-﻿function BuildUrl(host, search, sort, pg) {
-    return "https://www.elecard.com/";
-}
-
-function Playlist(html, host, search, sort) {
+﻿async function Playlist(host, search, model, sort, cat, pg) {
     const channel = {
         total_pages: 0,
         list: [],
@@ -24,15 +20,14 @@ function Playlist(html, host, search, sort) {
         ]
     };
 
+    var html = await httpGet("https://www.elecard.com/");
     // html parse ...
-    log('console.log ...')
-
-    var uri = "https://www.elecard.com/ru/videos";
+    log('console.log ...');
 
     for (let i = 0; i < 24; i++) {
         channel.list.push({
             name: "Tomsk Theater Square",
-            video: `${host}/porngram/video?uri=${encodeURIComponent(uri)}&secret_uri=${EncryptQuery(uri)}`,
+            video: `${host}/porngram/video?uri=${encryptQuery("https://www.elecard.com/ru/videos")}`,
             picture: "https://www.elecard.com/storage/thumbs/1_1280x_FFFFFF/images/Video%20Previews/TheaterSquare_640x360.jpg",
             time: "9:15",
             quality: "4K",
@@ -43,11 +38,20 @@ function Playlist(html, host, search, sort) {
     return JSON.stringify(channel);
 }
 
-function Video(html) {
+
+async function Video(uri) {
+    var html = await httpGet(uri);
     // html parse ...
     return JSON.stringify({
         "2160p": "https://www.elecard.com/storage/video/TheaterSquare_3840x2160.mp4",
         "1080p": "https://www.elecard.com/storage/video/TheaterSquare_1920x1080.mp4",
         "720p": "https://www.elecard.com/storage/video/TheaterSquare_1280x720.mp4"
     });
+}
+
+
+function MyResult(type) {
+    return type == "json"
+        ? JSON.stringify({ success: true, playlist: [] })
+        : "hello html";
 }

@@ -41,7 +41,8 @@ namespace AdultJS
         {
             conf = ModuleInvoke.Init("PornGram", new SisiSettings("PornGram", "porngram.com")
             {
-                displayindex = 1
+                displayindex = 1,
+                streamproxy = true
             });
         }
     }

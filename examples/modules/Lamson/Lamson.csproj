@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jint" Version="4.8.0" />
     <ProjectReference Include="..\..\Shared\Shared.csproj" />
   </ItemGroup>
 
