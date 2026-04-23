@@ -12,7 +12,7 @@
 - `VideoTpl`
 - `VoiceTpl`
 
-Описание свойств, методов и логики использования:
+Описание свойств, методов и логики использования:<br>
 https://github.com/lampac-nextgen/lampac/tree/main/Shared/Models/Templates
 
 ## Доступные функции в JavaScript
