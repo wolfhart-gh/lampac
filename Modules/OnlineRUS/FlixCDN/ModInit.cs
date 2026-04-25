@@ -40,7 +40,7 @@ public class ModInit : IModuleLoaded, IModuleOnline
     {
         conf = ModuleInvoke.Init("FlixCDN", new OnlinesSettings("FlixCDN", "https://player0.flixcdn.space", "https://api0.flixcdn.biz/api", streamproxy: true)
         {
-			enable = false,
+            enable = false,
             displayindex = 525,
             rch_access = "apk",
             stream_access = "apk,cors,web",

@@ -54,7 +54,7 @@ public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 
         PizdatoeDb = JsonConvert.DeserializeObject<ConcurrentDictionary<string, DbModel>>(File.ReadAllText("data/PizdatoeDb.json"));
         timer = new Timer(CronParse.Pizda, null, TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(Random.Shared.Next(10, 30)));
-        
+
         //CronParse.PizdaBobra();
     }
 
