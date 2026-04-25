@@ -1,9 +1,8 @@
 ﻿using Shared.Models.Module;
 
-namespace Tracks
+namespace Tracks;
+
+public class ModuleConf : ModuleBaseConf
 {
-    public class ModuleConf : ModuleBaseConf
-    {
-        public string tsuri { get; set; }
-    }
+    public string tsuri { get; set; }
 }

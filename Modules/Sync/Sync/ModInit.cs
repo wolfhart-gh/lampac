@@ -5,55 +5,53 @@ using Shared.Models.Events;
 using Shared.Models.Module;
 using Shared.Models.Module.Interfaces;
 using Shared.Services;
-using Sync.Models;
 using SyncEvents;
 using System.Collections.Generic;
 using System.IO;
 
-namespace Sync
+namespace Sync;
+
+public class ModInit : IModuleLoaded, IModuleConfigure
 {
-    public class ModInit : IModuleLoaded, IModuleConfigure
+    public static string modpath;
+    public static ModuleConf conf;
+
+    public void Configure(ConfigureModel app)
     {
-        public static string modpath;
-        public static ModuleConf conf;
+        app.services.AddDbContextFactory<SqlContext>(SqlContext.ConfiguringDbBuilder);
+    }
 
-        public void Configure(ConfigureModel app)
+    public void Loaded(InitspaceModel baseconf)
+    {
+        modpath = baseconf.path;
+
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        NwsEvents.Start(onlyreg: true);
+
+        foreach (var m in conf.limit_map)
+            CoreInit.conf.WAF.limit_map.Insert(0, m);
+
+        Directory.CreateDirectory("database/storage");
+        Directory.CreateDirectory("database/storage/temp");
+
+        SqlContext.Initialization(baseconf.app.ApplicationServices);
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        NwsEvents.Stop();
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Sync", new ModuleConf()
         {
-            app.services.AddDbContextFactory<SqlContext>(SqlContext.ConfiguringDbBuilder);
-        }
-
-        public void Loaded(InitspaceModel baseconf)
-        {
-            modpath = baseconf.path;
-
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            NwsEvents.Start(onlyreg: true);
-
-            foreach (var m in conf.limit_map)
-                CoreInit.conf.WAF.limit_map.Insert(0, m);
-
-            Directory.CreateDirectory("database/storage");
-            Directory.CreateDirectory("database/storage/temp");
-
-            SqlContext.Initialization(baseconf.app.ApplicationServices);
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            NwsEvents.Stop();
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Sync", new ModuleConf()
+            limit_map = new List<WafLimitRootMap>()
             {
-                limit_map = new List<WafLimitRootMap>()
-                {
-                    new("^/bookmark", new WafLimitMap { limit = 10, second = 1 })
-                }
-            });
-        }
+                new("^/bookmark", new WafLimitMap { limit = 10, second = 1 })
+            }
+        });
     }
 }

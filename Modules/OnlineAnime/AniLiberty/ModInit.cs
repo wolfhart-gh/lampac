@@ -8,51 +8,50 @@ using Shared.Services;
 using System.Collections.Generic;
 using Shared;
 
-namespace AniLiberty
+namespace AniLiberty;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf, "aniliberty", "AniLiberty")
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf, "aniliberty", "AniLiberty")
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("aniliberty");
 
-        public void Loaded(InitspaceModel baseconf)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("AniLiberty", new OnlinesSettings("AniLiberty", "https://api.anilibria.app")
         {
-            CoreInit.conf.online.with_search.Add("aniliberty");
+            displayindex = 110,
+            stream_access = "apk,cors,web",
+            httpversion = 2
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("AniLiberty", new OnlinesSettings("AniLiberty", "https://api.anilibria.app")
-            {
-                displayindex = 110,
-                stream_access = "apk,cors,web",
-                httpversion = 2
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "aniliberty" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "aniliberty" ? " ~ 1080p" : null;
     }
 }

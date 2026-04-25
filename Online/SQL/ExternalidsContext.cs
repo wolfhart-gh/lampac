@@ -7,82 +7,81 @@ using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Threading.Tasks;
 
-namespace Online.SQL
+namespace Online;
+
+public partial class ExternalidsContext
 {
-    public partial class ExternalidsContext
+    public static readonly string semaphoreKey = "ExternalidsContext";
+
+    public static IDbContextFactory<ExternalidsContext> Factory { get; set; }
+
+    public static void Initialization(IServiceProvider applicationServices)
     {
-        public static readonly string semaphoreKey = "ExternalidsContext";
+        Directory.CreateDirectory("cache");
 
-        public static IDbContextFactory<ExternalidsContext> Factory { get; set; }
+        Factory = applicationServices.GetService<IDbContextFactory<ExternalidsContext>>();
 
-        public static void Initialization(IServiceProvider applicationServices)
+        using (var sqlDb = new ExternalidsContext())
+            sqlDb.Database.EnsureCreated();
+    }
+
+    async public Task<int> SaveChangesLocks()
+    {
+        var semaphore = new SemaphorManager(semaphoreKey, TimeSpan.FromSeconds(30));
+
+        try
         {
-            Directory.CreateDirectory("cache");
-
-            Factory = applicationServices.GetService<IDbContextFactory<ExternalidsContext>>();
-
-            using (var sqlDb = new ExternalidsContext())
-                sqlDb.Database.EnsureCreated();
-        }
-
-        async public Task<int> SaveChangesLocks()
-        {
-            var semaphore = new SemaphorManager(semaphoreKey, TimeSpan.FromSeconds(30));
-
-            try
-            {
-                bool _acquired = await semaphore.WaitAsync();
-                if (!_acquired)
-                    return 0;
-
-                return await base.SaveChangesAsync();
-            }
-            catch
-            {
+            bool _acquired = await semaphore.WaitAsync();
+            if (!_acquired)
                 return 0;
-            }
-            finally
-            {
-                semaphore.Release();
-            }
+
+            return await base.SaveChangesAsync();
+        }
+        catch
+        {
+            return 0;
+        }
+        finally
+        {
+            semaphore.Release();
         }
     }
+}
 
 
-    public partial class ExternalidsContext : DbContext
+public partial class ExternalidsContext : DbContext
+{
+    public DbSet<ExternalidsSqlModel> imdb { get; set; }
+
+    public DbSet<ExternalidsSqlModel> kinopoisk { get; set; }
+
+    static readonly string _connection = new SqliteConnectionStringBuilder
     {
-        public DbSet<ExternalidsSqlModel> imdb { get; set; }
+        DataSource = "cache/Externalids.sql",
+        Cache = SqliteCacheMode.Shared,
+        DefaultTimeout = 10,
+        Pooling = true
+    }.ToString();
 
-        public DbSet<ExternalidsSqlModel> kinopoisk { get; set; }
-
-        static readonly string _connection = new SqliteConnectionStringBuilder
-        {
-            DataSource = "cache/Externalids.sql",
-            Cache = SqliteCacheMode.Shared,
-            DefaultTimeout = 10,
-            Pooling = true
-        }.ToString();
-
-        public static void ConfiguringDbBuilder(DbContextOptionsBuilder optionsBuilder)
-        {
-            if (!optionsBuilder.IsConfigured)
-            {
-                optionsBuilder.UseSqlite(_connection);
-                optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-            }
-        }
-
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        {
-            ConfiguringDbBuilder(optionsBuilder);
-        }
-    }
-
-    public class ExternalidsSqlModel
+    public static void ConfiguringDbBuilder(DbContextOptionsBuilder optionsBuilder)
     {
-        [Key]
-        public string Id { get; set; }
-
-        public string value { get; set; }
+        if (!optionsBuilder.IsConfigured)
+        {
+            optionsBuilder.UseSqlite(_connection);
+            optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        }
     }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        ConfiguringDbBuilder(optionsBuilder);
+    }
+}
+
+public class ExternalidsSqlModel
+{
+    [Key]
+    public string Id { get; set; }
+
+    public string value { get; set; }
 }

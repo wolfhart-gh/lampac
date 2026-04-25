@@ -1,35 +1,34 @@
-﻿namespace Shared.Services.Utilities
+﻿namespace Shared.Services.Utilities;
+
+public static class TimeZoneTo
 {
-    public static class TimeZoneTo
+    public static bool ByIds(string[] zones, out DateTime zoneTime)
     {
-        public static bool ByIds(string[] zones, out DateTime zoneTime)
+        zoneTime = DateTime.MinValue;
+
+        foreach (var zone in zones)
         {
-            zoneTime = DateTime.MinValue;
-
-            foreach (var zone in zones)
-            {
-                if (ById(zone, out zoneTime))
-                    return true;
-            }
-
-            return false;
+            if (ById(zone, out zoneTime))
+                return true;
         }
 
-        public static bool ById(string zone, out DateTime zoneTime)
+        return false;
+    }
+
+    public static bool ById(string zone, out DateTime zoneTime)
+    {
+        zoneTime = DateTime.MinValue;
+
+        try
         {
-            zoneTime = DateTime.MinValue;
+            TimeZoneInfo tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Kiev");
+            zoneTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
 
-            try
-            {
-                TimeZoneInfo tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Kiev");
-                zoneTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
-
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 }

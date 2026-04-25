@@ -1,19 +1,18 @@
 ﻿using System.Text.Json.Nodes;
 
-namespace TmdbProxy
+namespace TmdbProxy;
+
+public class CacheModel
 {
-    public class CacheModel
+    public CacheModel() { }
+
+    public CacheModel(JsonObject json, int statusCode)
     {
-        public CacheModel() { }
-
-        public CacheModel(JsonObject json, int statusCode)
-        {
-            this.json = json;
-            this.statusCode = statusCode;
-        }
-
-        public JsonObject json { get; set; }
-
-        public int statusCode { get; set; }
+        this.json = json;
+        this.statusCode = statusCode;
     }
+
+    public JsonObject json { get; set; }
+
+    public int statusCode { get; set; }
 }

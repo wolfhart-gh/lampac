@@ -7,40 +7,39 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Tizam
+namespace Tizam;
+
+public class ModInit : IModuleLoaded, IModuleSisi
 {
-    public class ModInit : IModuleLoaded, IModuleSisi
+    public static SisiSettings conf;
+
+    public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
     {
-        public static SisiSettings conf;
-
-        public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
+        return new List<SisiModuleItem>()
         {
-            return new List<SisiModuleItem>()
-            {
-                new("tizam.pw", conf, "tizam")
-            };
-        }
+            new("tizam.pw", conf, "tizam")
+        };
+    }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
 
-        void updateConf()
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Tizam", new SisiSettings("Tizam", "https://tv4.tizam.org")
         {
-            conf = ModuleInvoke.Init("Tizam", new SisiSettings("Tizam", "https://tv4.tizam.org")
-            {
-                displayindex = 21,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors",
-                rchstreamproxy = "web"
-            });
-        }
+            displayindex = 21,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors",
+            rchstreamproxy = "web"
+        });
     }
 }

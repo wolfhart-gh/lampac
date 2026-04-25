@@ -1,14 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Shared;
 
-namespace PingPong
+namespace PingPong;
+
+public class PingPongController : BaseController
 {
-    public class PingPongController : BaseController
+    [Route("lamson/ping")]
+    public ActionResult Index()
     {
-        [Route("lamson/ping")]
-        public ActionResult Index()
-        {
-            return Content("pong");
-        }
+        return Content("pong");
     }
 }

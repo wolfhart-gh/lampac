@@ -13,90 +13,89 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-namespace PizdatoeHD
+namespace PizdatoeHD;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static ConcurrentDictionary<string, DbModel> PizdatoeDb = null;
+
+    public static ModuleConf conf;
+    static Timer timer;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static ConcurrentDictionary<string, DbModel> PizdatoeDb = null;
+        if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
+            return null;
 
-        public static ModuleConf conf;
-        static Timer timer;
-
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf)
-            };
-        }
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
+            return null;
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+        return new List<ModuleOnlineSpiderItem>()
         {
-            if (PlaywrightBrowser.Status == PlaywrightStatus.disabled)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf)
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("pizdatoehd");
 
-        public void Loaded(InitspaceModel baseconf)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+
+        PizdatoeDb = JsonConvert.DeserializeObject<ConcurrentDictionary<string, DbModel>>(File.ReadAllText("data/PizdatoeDb.json"));
+        timer = new Timer(CronParse.Pizda, null, TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(Random.Shared.Next(10, 30)));
+        
+        //CronParse.PizdaBobra();
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+
+        PizdatoeDb?.Clear();
+        timer?.Dispose();
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("PizdatoeHD", new ModuleConf("pizdatoehd", "https://rezka.ag")
         {
-            CoreInit.conf.online.with_search.Add("pizdatoehd");
+            kit = false,
+            enable = true,
+            imitationHuman = true,
+            displayindex = 331,
+            hls = true,
+            streamproxy = true,
+            stream_access = "apk,cors,web",
+            headers_stream = HeadersModel.Init(
+                ("accept-encoding", "gzip, deflate, br, zstd"),
+                ("connection", "keep-alive"),
+                ("origin", "https://rezka.ag"),
+                ("referer", "https://rezka.ag/"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "cross-site")
+            ).ToDictionary()
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-
-            PizdatoeDb = JsonConvert.DeserializeObject<ConcurrentDictionary<string, DbModel>>(File.ReadAllText("data/PizdatoeDb.json"));
-            timer = new Timer(CronParse.Pizda, null, TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(Random.Shared.Next(10, 30)));
-
-            //CronParse.PizdaBobra();
-        }
-
-        public void Dispose()
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser switch
         {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-
-            PizdatoeDb?.Clear();
-            timer?.Dispose();
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("PizdatoeHD", new ModuleConf("pizdatoehd", "https://rezka.ag")
-            {
-                kit = false,
-                enable = true,
-                imitationHuman = true,
-                displayindex = 331,
-                hls = true,
-                streamproxy = true,
-                stream_access = "apk,cors,web",
-                headers_stream = HeadersModel.Init(
-                    ("accept-encoding", "gzip, deflate, br, zstd"),
-                    ("connection", "keep-alive"),
-                    ("origin", "https://rezka.ag"),
-                    ("referer", "https://rezka.ag/"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "cross-site")
-                ).ToDictionary()
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser switch
-            {
-                "pizdatoehd" => conf.premium ? " ~ 2160p" : " ~ 720p",
-                _ => null
-            };
-        }
+            "pizdatoehd" => conf.premium ? " ~ 2160p" : " ~ 720p",
+            _ => null
+        };
     }
 }

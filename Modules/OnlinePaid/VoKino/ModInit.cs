@@ -13,164 +13,163 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace VoKino
+namespace VoKino;
+
+public class ModInit : IModuleLoaded, IModuleOnlineAsync
 {
-    public class ModInit : IModuleLoaded, IModuleOnlineAsync
+    public static ModuleConf conf;
+
+    public async Task<List<ModuleOnlineItem>> InvokeAsync(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static ModuleConf conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public async Task<List<ModuleOnlineItem>> InvokeAsync(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        var user = requestInfo.user;
+        var memoryCache = HybridCache.GetMemory();
+
+        if (args.kinopoisk_id > 0 || (args.source != null && args.source.Equals("vokino", StringComparison.OrdinalIgnoreCase)))
         {
-            var online = new List<ModuleOnlineItem>();
+            string vid = args.kinopoisk_id.ToString();
+            if ((args.source != null && args.source.Equals("vokino", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrEmpty(args.id))
+                vid = args.id;
 
-            var user = requestInfo.user;
-            var memoryCache = HybridCache.GetMemory();
-
-            if (args.kinopoisk_id > 0 || (args.source != null && args.source.Equals("vokino", StringComparison.OrdinalIgnoreCase)))
+            var myinit = KitInvoke.Load(conf, args.kitconf, requestInfo, (j, i, c) =>
             {
-                string vid = args.kinopoisk_id.ToString();
-                if ((args.source != null && args.source.Equals("vokino", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrEmpty(args.id))
-                    vid = args.id;
+                if (j.ContainsKey("online"))
+                    i.online = c.online;
 
-                var myinit = KitInvoke.Load(conf, args.kitconf, requestInfo, (j, i, c) =>
+                return i;
+            });
+
+            if (myinit.enable && !string.IsNullOrEmpty(myinit.token))
+            {
+                void SendOnline(JObject view)
                 {
-                    if (j.ContainsKey("online"))
-                        i.online = c.online;
+                    var on = myinit.online;
 
-                    return i;
-                });
-
-                if (myinit.enable && !string.IsNullOrEmpty(myinit.token))
-                {
-                    void SendOnline(JObject view)
+                    void send(string name)
                     {
-                        var on = myinit.online;
+                        string url = "{localhost}/lite/vokino?balancer=" + name.ToLower();
 
-                        void send(string name)
-                        {
-                            string url = "{localhost}/lite/vokino?balancer=" + name.ToLower();
+                        string displayname = $"{myinit.displayname ?? "VoKino"}";
+                        if (name != "VoKino")
+                            displayname = $"{name} ({myinit.displayname ?? "VoKino"})";
 
-                            string displayname = $"{myinit.displayname ?? "VoKino"}";
-                            if (name != "VoKino")
-                                displayname = $"{name} ({myinit.displayname ?? "VoKino"})";
+                        if (myinit.onlyBalancerName)
+                            displayname = name;
 
-                            if (myinit.onlyBalancerName)
-                                displayname = name;
-
-                            online.Add(new(myinit, (name == "VoKino" ? "vokino" : $"vokino-{name.ToLower()}"), displayname, myurl: url));
-                        }
-
-                        if (on.vokino && (view == null || view.ContainsKey("Vokino")))
-                            send("VoKino");
-
-                        if (on.filmix && (view == null || view.ContainsKey("Filmix")))
-                            send("Filmix");
-
-                        if (on.alloha && (view == null || view.ContainsKey("Alloha")))
-                            send("Alloha");
-
-                        if (on.vibix && (view == null || view.ContainsKey("Vibix")))
-                            send("Vibix");
-
-                        if (on.monframe && (view == null || view.ContainsKey("MonFrame")))
-                            send("MonFrame");
-
-                        if (on.remux && (view == null || view.ContainsKey("Remux")))
-                            send("Remux");
-
-                        if (on.ashdi && (view == null || view.ContainsKey("Ashdi")))
-                            send("Ashdi");
-
-                        if (on.hdvb && (view == null || view.ContainsKey("Hdvb")))
-                            send("HDVB");
+                        online.Add(new(myinit, (name == "VoKino" ? "vokino" : $"vokino-{name.ToLower()}"), displayname, myurl: url));
                     }
 
-                    async ValueTask vkino()
-                    {
-                        if (myinit.rhub || !CoreInit.conf.online.checkOnlineSearch)
-                        {
-                            SendOnline(null);
-                        }
-                        else
-                        {
-                            if (!memoryCache.TryGetValue($"vokino:view:{vid}", out JObject view))
-                            {
-                                view = await Http.Get<JObject>($"{myinit.host}/v2/view/{vid}?token={myinit.token}", timeoutSeconds: 4);
-                                if (view != null)
-                                    memoryCache.Set($"vokino:view:{vid}", view, TimeSpan.FromMinutes(180));
-                            }
+                    if (on.vokino && (view == null || view.ContainsKey("Vokino")))
+                        send("VoKino");
 
-                            if (view != null && view.ContainsKey("online") && view["online"] is JObject onlineObj)
-                                SendOnline(onlineObj);
-                        }
-                    }
+                    if (on.filmix && (view == null || view.ContainsKey("Filmix")))
+                        send("Filmix");
 
-                    if (CoreInit.conf.accsdb.enable)
+                    if (on.alloha && (view == null || view.ContainsKey("Alloha")))
+                        send("Alloha");
+
+                    if (on.vibix && (view == null || view.ContainsKey("Vibix")))
+                        send("Vibix");
+
+                    if (on.monframe && (view == null || view.ContainsKey("MonFrame")))
+                        send("MonFrame");
+
+                    if (on.remux && (view == null || view.ContainsKey("Remux")))
+                        send("Remux");
+
+                    if (on.ashdi && (view == null || view.ContainsKey("Ashdi")))
+                        send("Ashdi");
+
+                    if (on.hdvb && (view == null || view.ContainsKey("Hdvb")))
+                        send("HDVB");
+                }
+
+                async ValueTask vkino()
+                {
+                    if (myinit.rhub || !CoreInit.conf.online.checkOnlineSearch)
                     {
-                        if (user != null)
-                        {
-                            if (myinit.group > user.group && myinit.group_hide) { }
-                            else
-                                await vkino();
-                        }
+                        SendOnline(null);
                     }
                     else
                     {
-                        if (myinit.group > 0 && myinit.group_hide && (user == null || myinit.group > user.group)) { }
+                        if (!memoryCache.TryGetValue($"vokino:view:{vid}", out JObject view))
+                        {
+                            view = await Http.Get<JObject>($"{myinit.host}/v2/view/{vid}?token={myinit.token}", timeoutSeconds: 4);
+                            if (view != null)
+                                memoryCache.Set($"vokino:view:{vid}", view, TimeSpan.FromMinutes(180));
+                        }
+
+                        if (view != null && view.ContainsKey("online") && view["online"] is JObject onlineObj)
+                            SendOnline(onlineObj);
+                    }
+                }
+
+                if (CoreInit.conf.accsdb.enable)
+                {
+                    if (user != null)
+                    {
+                        if (myinit.group > user.group && myinit.group_hide) { }
                         else
                             await vkino();
                     }
                 }
+                else
+                {
+                    if (myinit.group > 0 && myinit.group_hide && (user == null || myinit.group > user.group)) { }
+                    else
+                        await vkino();
+                }
             }
-
-            return online;
         }
 
-        public void Loaded(InitspaceModel baseconf)
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        /// <summary>
+        /// api.vokino.org
+        /// api.vokino.pro
+        /// </summary>
+        conf = ModuleInvoke.Init("VoKino", new ModuleConf("VoKino", "http://api.vokino.org")
         {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+            displayindex = 300,
+            streamproxy = false,
+            rchstreamproxy = "web",
+            rhub_safety = false
+        });
+    }
 
-        public void Dispose()
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        switch (e.balanser)
         {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
+            case "vokino":
+            case "vokino-alloha":
+            case "vokino-filmix":
+                return " ~ 2160p";
+            case "vokino-vibix":
+            case "vokino-monframe":
+            case "vokino-remux":
+            case "vokino-ashdi":
+            case "vokino-hdvb":
+                return " ~ 1080p";
         }
 
-        void updateConf()
-        {
-            /// <summary>
-            /// api.vokino.org
-            /// api.vokino.pro
-            /// </summary>
-            conf = ModuleInvoke.Init("VoKino", new ModuleConf("VoKino", "http://api.vokino.org")
-            {
-                displayindex = 300,
-                streamproxy = false,
-                rchstreamproxy = "web",
-                rhub_safety = false
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            switch (e.balanser)
-            {
-                case "vokino":
-                case "vokino-alloha":
-                case "vokino-filmix":
-                    return " ~ 2160p";
-                case "vokino-vibix":
-                case "vokino-monframe":
-                case "vokino-remux":
-                case "vokino-ashdi":
-                case "vokino-hdvb":
-                    return " ~ 1080p";
-            }
-
-            return null;
-        }
+        return null;
     }
 }

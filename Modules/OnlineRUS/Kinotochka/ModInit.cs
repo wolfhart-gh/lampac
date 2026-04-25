@@ -8,54 +8,53 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Kinotochka
+namespace Kinotochka;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
-
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf)
-            };
-        }
+            new(conf)
+        };
+    }
 
-        public void Loaded(InitspaceModel baseconf)
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("kinotochka");
+
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Kinotochka", new OnlinesSettings("Kinotochka", "https://kinovibe.vip")
         {
-            CoreInit.conf.online.with_search.Add("kinotochka");
+            displayindex = 590,
+            httpversion = 2,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors",
+            rchstreamproxy = "web"
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser switch
         {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Kinotochka", new OnlinesSettings("Kinotochka", "https://kinovibe.vip")
-            {
-                displayindex = 590,
-                httpversion = 2,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors",
-                rchstreamproxy = "web"
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser switch
-            {
-                "kinotochka" => " ~ 720p",
-                _ => null
-            };
-        }
+            "kinotochka" => " ~ 720p",
+            _ => null
+        };
     }
 }

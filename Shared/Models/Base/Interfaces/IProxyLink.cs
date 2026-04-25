@@ -1,7 +1,6 @@
-﻿namespace Shared.Models.Base
+﻿namespace Shared.Models.Base;
+
+public interface IProxyLink
 {
-    public interface IProxyLink
-    {
-        public string Encrypt(string uri, string plugin, DateTime ex = default, bool IsProxyImg = false);
-    }
+    public string Encrypt(string uri, string plugin, DateTime ex = default, bool IsProxyImg = false);
 }

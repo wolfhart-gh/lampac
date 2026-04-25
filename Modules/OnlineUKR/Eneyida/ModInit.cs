@@ -7,47 +7,46 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Eneyida
+namespace Eneyida;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        return new List<ModuleOnlineItem>() 
+        { 
+            new ModuleOnlineItem(conf, arg_title: " (Украинский)")
+        };
+    }
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
-        {
-            return new List<ModuleOnlineItem>()
-            {
-                new ModuleOnlineItem(conf, arg_title: " (Украинский)")
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
 
-        public void Dispose()
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Eneyida", new OnlinesSettings("Eneyida", "https://eneyida.tv")
         {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
+            displayindex = 820,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors,web",
+            geo_hide = ["RU", "BY"]
+        });
+    }
 
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Eneyida", new OnlinesSettings("Eneyida", "https://eneyida.tv")
-            {
-                displayindex = 820,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors,web",
-                geo_hide = ["RU", "BY"]
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "eneyida" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "eneyida" ? " ~ 1080p" : null;
     }
 }

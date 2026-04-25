@@ -1,31 +1,30 @@
 ﻿using Shared.Models.Base;
 using System;
 
-namespace KinoPub
+namespace KinoPub;
+
+public class ModuleConf : BaseSettings, ICloneable
 {
-    public class ModuleConf : BaseSettings, ICloneable
+    public ModuleConf(string plugin, string host = null)
     {
-        public ModuleConf(string plugin, string host = null)
-        {
-            this.plugin = plugin;
+        this.plugin = plugin;
 
-            if (host != null)
-                this.host = host.StartsWith("http") ? host : Decrypt(host);
-        }
+        if (host != null)
+            this.host = host.StartsWith("http") ? host : Decrypt(host);
+    }
 
-        public string[] tokens { get; set; }
+    public string[] tokens { get; set; }
 
-        public string filetype { get; set; }
+    public string filetype { get; set; }
 
 
-        public ModuleConf Clone()
-        {
-            return (ModuleConf)MemberwiseClone();
-        }
+    public ModuleConf Clone()
+    {
+        return (ModuleConf)MemberwiseClone();
+    }
 
-        object ICloneable.Clone()
-        {
-            return MemberwiseClone();
-        }
+    object ICloneable.Clone()
+    {
+        return MemberwiseClone();
     }
 }

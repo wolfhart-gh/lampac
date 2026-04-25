@@ -7,49 +7,48 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace IptvOnline
+namespace IptvOnline;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
-
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf, "iptvonline", "iptv.online")
-            };
-        }
+            new(conf, "iptvonline", "iptv.online")
+        };
+    }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
 
-        void updateConf()
+    void updateConf()
+    {
+        /// <summary>
+        /// https://iptv.online/ru/dealers/api
+        /// </summary>
+        conf = ModuleInvoke.Init("IptvOnline", new OnlinesSettings("IptvOnline", "https://iptv.online")
         {
-            /// <summary>
-            /// https://iptv.online/ru/dealers/api
-            /// </summary>
-            conf = ModuleInvoke.Init("IptvOnline", new OnlinesSettings("IptvOnline", "https://iptv.online")
-            {
-                enable = false,
-                displayindex = 345,
-                rhub_safety = false
-            });
-        }
+            enable = false,
+            displayindex = 345,
+            rhub_safety = false
+        });
+    }
 
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "iptvonline" ? " ~ 2160p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "iptvonline" ? " ~ 2160p" : null;
     }
 }

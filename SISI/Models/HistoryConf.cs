@@ -1,9 +1,8 @@
-﻿namespace SISI.Models
-{
-    public class HistoryConf
-    {
-        public bool enable { get; set; }
+﻿namespace SISI;
 
-        public int days { get; set; }
-    }
+public class HistoryConf
+{
+    public bool enable { get; set; }
+
+    public int days { get; set; }
 }

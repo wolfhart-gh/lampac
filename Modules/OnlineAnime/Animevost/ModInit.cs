@@ -8,64 +8,63 @@ using Shared.Services;
 using System.Collections.Generic;
 using Shared;
 
-namespace Animevost
+namespace Animevost;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf)
-            };
-        }
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+        return new List<ModuleOnlineSpiderItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf)
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("animevost");
 
-        public void Loaded(InitspaceModel baseconf)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Animevost", new OnlinesSettings("Animevost", "https://animevost.org")
         {
-            CoreInit.conf.online.with_search.Add("animevost");
+            displayindex = 125,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors",
+            rchstreamproxy = "web",
+            httptimeout = 10
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Animevost", new OnlinesSettings("Animevost", "https://animevost.org")
-            {
-                displayindex = 125,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors",
-                rchstreamproxy = "web",
-                httptimeout = 10
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "animevost" ? " ~ 720p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "animevost" ? " ~ 720p" : null;
     }
 }

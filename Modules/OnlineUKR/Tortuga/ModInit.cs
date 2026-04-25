@@ -4,33 +4,32 @@ using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
 using Shared.Services;
 
-namespace Tortuga
+namespace Tortuga;
+
+public class ModInit : IModuleLoaded
 {
-    public class ModInit : IModuleLoaded
+    public static OnlinesSettings conf;
+
+    public void Loaded(InitspaceModel baseconf)
     {
-        public static OnlinesSettings conf;
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+    }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
 
-        public void Dispose()
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Tortuga", new OnlinesSettings("Tortuga", "")
         {
-            EventListener.UpdateInitFile -= updateConf;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Tortuga", new OnlinesSettings("Tortuga", "")
-            {
-                displayindex = 805,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors",
-                rchstreamproxy = "web",
-                geo_hide = ["RU", "BY"]
-            });
-        }
+            displayindex = 805,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors",
+            rchstreamproxy = "web",
+            geo_hide = ["RU", "BY"]
+        });
     }
 }

@@ -10,200 +10,199 @@ using System.Threading.Tasks;
 using Shared;
 using Shared.Models.Base;
 
-namespace FanCDN
+namespace FanCDN;
+
+public class FanCDNController : BaseOnlineController
 {
-    public class FanCDNController : BaseOnlineController
+    public FanCDNController() : base(ModInit.conf) { }
+
+    [HttpGet]
+    [Route("lite/fancdn")]
+    async public Task<ActionResult> Index(string imdb_id, long kinopoisk_id, string title, string original_title, int year, int serial, int t = -1, int s = -1, bool rjson = false)
     {
-        public FanCDNController() : base(ModInit.conf) { }
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
 
-        [HttpGet]
-        [Route("lite/fancdn")]
-        async public Task<ActionResult> Index(string imdb_id, long kinopoisk_id, string title, string original_title, int year, int serial, int t = -1, int s = -1, bool rjson = false)
-        {
-            if (await IsRequestBlocked(rch: true))
-                return badInitMsg;
+        if (kinopoisk_id == 0 || serial == 1)
+            return OnError();
 
-            if (kinopoisk_id == 0 || serial == 1)
-                return OnError();
+        var oninvk = new FanCDNInvoke
+        (
+           host,
+           init.host,
+           httpHydra,
+           async ongettourl =>
+           {
+               return await httpHydra.Get(ongettourl);
 
-            var oninvk = new FanCDNInvoke
-            (
-               host,
-               init.host,
-               httpHydra,
-               async ongettourl =>
+               if (ongettourl.Contains("fancdn."))
+                   return await black_magic(init.cors(ongettourl));
+
+               if (string.IsNullOrEmpty(init.cookie))
+                   return null;
+
+               var headers = httpHeaders(init, HeadersModel.Init(
+                   ("sec-fetch-dest", "document"),
+                   ("sec-fetch-mode", "navigate"),
+                   ("sec-fetch-site", "none"),
+                   ("cookie", init.cookie)
+               ));
+
+               if (rch?.enable == true || init.priorityBrowser == "http")
+                   return await httpHydra.Get(ongettourl, newheaders: headers, safety: true);
+
+               #region Browser Search
+               try
                {
-                   return await httpHydra.Get(ongettourl);
-
-                   if (ongettourl.Contains("fancdn."))
-                       return await black_magic(init.cors(ongettourl));
-
-                   if (string.IsNullOrEmpty(init.cookie))
-                       return null;
-
-                   var headers = httpHeaders(init, HeadersModel.Init(
-                       ("sec-fetch-dest", "document"),
-                       ("sec-fetch-mode", "navigate"),
-                       ("sec-fetch-site", "none"),
-                       ("cookie", init.cookie)
-                   ));
-
-                   if (rch?.enable == true || init.priorityBrowser == "http")
-                       return await httpHydra.Get(ongettourl, newheaders: headers, safety: true);
-
-                   #region Browser Search
-                   try
+                   using (var browser = new PlaywrightBrowser())
                    {
-                       using (var browser = new PlaywrightBrowser())
+                       var page = await browser.NewPageAsync(init.plugin, proxy: proxy_data);
+                       if (page == null)
+                           return null;
+
+                       string fanhost = "." + Regex.Replace(init.host, "^https?://", "");
+                       var excookie = DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeSeconds();
+
+                       var cookies = new List<BrowserCookie>();
+                       foreach (string line in init.cookie.Split(";"))
                        {
-                           var page = await browser.NewPageAsync(init.plugin, proxy: proxy_data);
-                           if (page == null)
-                               return null;
+                           if (string.IsNullOrEmpty(line) || !line.Contains("=") || line.Contains("cf_clearance") || line.Contains("PHPSESSID"))
+                               continue;
 
-                           string fanhost = "." + Regex.Replace(init.host, "^https?://", "");
-                           var excookie = DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeSeconds();
-
-                           var cookies = new List<BrowserCookie>();
-                           foreach (string line in init.cookie.Split(";"))
+                           cookies.Add(new BrowserCookie()
                            {
-                               if (string.IsNullOrEmpty(line) || !line.Contains("=") || line.Contains("cf_clearance") || line.Contains("PHPSESSID"))
-                                   continue;
-
-                               cookies.Add(new BrowserCookie()
-                               {
-                                   Domain = fanhost,
-                                   Expires = excookie,
-                                   Path = "/",
-                                   HttpOnly = true,
-                                   Secure = true,
-                                   Name = line.Split("=")[0].Trim(),
-                                   Value = line.Split("=")[1].Trim()
-                               });
-                           }
-
-                           await page.Context.AddCookiesAsync(cookies);
-
-                           var response = await page.GotoAsync(ongettourl, new PageGotoOptions()
-                           {
-                               Timeout = 10_000,
-                               WaitUntil = WaitUntilState.DOMContentLoaded
+                               Domain = fanhost,
+                               Expires = excookie,
+                               Path = "/",
+                               HttpOnly = true,
+                               Secure = true,
+                               Name = line.Split("=")[0].Trim(),
+                               Value = line.Split("=")[1].Trim()
                            });
-
-                           if (response == null)
-                               return null;
-
-                           return await response.TextAsync();
                        }
+
+                       await page.Context.AddCookiesAsync(cookies);
+
+                       var response = await page.GotoAsync(ongettourl, new PageGotoOptions()
+                       {
+                           Timeout = 10_000,
+                           WaitUntil = WaitUntilState.DOMContentLoaded
+                       });
+
+                       if (response == null)
+                           return null;
+
+                       return await response.TextAsync();
                    }
-                   catch
-                   {
-                       return null;
-                   }
-                   #endregion
-               },
-               streamfile => HostStreamProxy(streamfile)
-            );
+               }
+               catch
+               {
+                   return null;
+               }
+               #endregion
+           },
+           streamfile => HostStreamProxy(streamfile)
+        );
 
-        rhubFallback:
-            var cache = await InvokeCacheResult<EmbedModel>(ipkey($"fancdn:{kinopoisk_id}"), 20, textJson: true, onget: async e =>
-            {
-                //var result = !string.IsNullOrEmpty(init.token) && kinopoisk_id > 0
-                //    ? await oninvk.EmbedToken(kinopoisk_id, init.token)
-                //    : await oninvk.EmbedSearch(title, original_title, year, serial);
-
-                var result = await oninvk.EmbedFilms(init.host, kinopoisk_id);
-
-                if (result == null)
-                    return e.Fail("result");
-
-                return e.Success(result);
-            });
-
-            if (IsRhubFallback(cache, safety: true))
-                goto rhubFallback;
-
-            return ContentTpl(cache,
-                () => oninvk.Tpl(cache.Value, imdb_id, kinopoisk_id, title, original_title, t, s, rjson: rjson, vast: init.vast, headers: httpHeaders(init))
-            );
-        }
-
-
-        #region black_magic
-        async Task<string> black_magic(string uri)
+    rhubFallback:
+        var cache = await InvokeCacheResult<EmbedModel>(ipkey($"fancdn:{kinopoisk_id}"), 20, textJson: true, onget: async e =>
         {
-            try
+            //var result = !string.IsNullOrEmpty(init.token) && kinopoisk_id > 0
+            //    ? await oninvk.EmbedToken(kinopoisk_id, init.token)
+            //    : await oninvk.EmbedSearch(title, original_title, year, serial);
+
+            var result = await oninvk.EmbedFilms(init.host, kinopoisk_id);
+
+            if (result == null)
+                return e.Fail("result");
+
+            return e.Success(result);
+        });
+
+        if (IsRhubFallback(cache, safety: true))
+            goto rhubFallback;
+
+        return ContentTpl(cache,
+            () => oninvk.Tpl(cache.Value, imdb_id, kinopoisk_id, title, original_title, t, s, rjson: rjson, vast: init.vast, headers: httpHeaders(init))
+        );
+    }
+
+
+    #region black_magic
+    async Task<string> black_magic(string uri)
+    {
+        try
+        {
+            var headers = httpHeaders(init, HeadersModel.Init(
+                ("sec-fetch-dest", "iframe"),
+                ("sec-fetch-mode", "navigate"),
+                ("sec-fetch-site", "cross-site"),
+                ("referer", $"{init.host}/")
+            ));
+
+            if (rch?.enable == true || init.priorityBrowser == "http")
+                return await httpHydra.Get(uri, newheaders: headers, safety: true);
+
+            using (var browser = new PlaywrightBrowser())
             {
-                var headers = httpHeaders(init, HeadersModel.Init(
-                    ("sec-fetch-dest", "iframe"),
-                    ("sec-fetch-mode", "navigate"),
-                    ("sec-fetch-site", "cross-site"),
-                    ("referer", $"{init.host}/")
-                ));
+                var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: init.imitationHuman);
+                if (page == null)
+                    return null;
 
-                if (rch?.enable == true || init.priorityBrowser == "http")
-                    return await httpHydra.Get(uri, newheaders: headers, safety: true);
+                browser.SetFailedUrl(uri);
 
-                using (var browser = new PlaywrightBrowser())
+                await page.RouteAsync("**/*", async route =>
                 {
-                    var page = await browser.NewPageAsync(init.plugin, init.headers, proxy: proxy_data, imitationHuman: init.imitationHuman);
-                    if (page == null)
-                        return null;
-
-                    browser.SetFailedUrl(uri);
-
-                    await page.RouteAsync("**/*", async route =>
+                    try
                     {
-                        try
+                        if (route.Request.Url.StartsWith(init.host))
                         {
-                            if (route.Request.Url.StartsWith(init.host))
+                            await route.FulfillAsync(new RouteFulfillOptions
                             {
-                                await route.FulfillAsync(new RouteFulfillOptions
-                                {
-                                    Body = PlaywrightBase.IframeHtml(uri)
-                                });
-                            }
-                            else if (route.Request.Url == uri)
+                                Body = PlaywrightBase.IframeHtml(uri)
+                            });
+                        }
+                        else if (route.Request.Url == uri)
+                        {
+                            string html = null;
+                            await browser.ClearContinueAsync(route, page);
+
+                            var response = await page.WaitForResponseAsync(route.Request.Url);
+                            if (response != null)
+                                html = await response.TextAsync();
+
+                            browser.SetPageResult(html);
+                        }
+                        else
+                        {
+                            if (!init.imitationHuman || route.Request.Url.EndsWith(".m3u8"))
                             {
-                                string html = null;
-                                await browser.ClearContinueAsync(route, page);
-
-                                var response = await page.WaitForResponseAsync(route.Request.Url);
-                                if (response != null)
-                                    html = await response.TextAsync();
-
-                                browser.SetPageResult(html);
+                                PlaywrightBase.ConsoleLog(() => $"Playwright: Abort {route.Request.Url}");
+                                await route.AbortAsync();
                             }
                             else
                             {
-                                if (!init.imitationHuman || route.Request.Url.EndsWith(".m3u8"))
-                                {
-                                    PlaywrightBase.ConsoleLog(() => $"Playwright: Abort {route.Request.Url}");
-                                    await route.AbortAsync();
-                                }
-                                else
-                                {
-                                    if (await PlaywrightBase.AbortOrCache(page, route))
-                                        return;
+                                if (await PlaywrightBase.AbortOrCache(page, route))
+                                    return;
 
-                                    await browser.ClearContinueAsync(route, page);
-                                }
+                                await browser.ClearContinueAsync(route, page);
                             }
                         }
-                        catch (System.Exception ex)
-                        {
-                            Serilog.Log.Error(ex, "{Class} {CatchId}", "FanCDN", "id_1bgipk7h");
-                        }
-                    });
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Serilog.Log.Error(ex, "{Class} {CatchId}", "FanCDN", "id_1bgipk7h");
+                    }
+                });
 
-                    PlaywrightBase.GotoAsync(page, init.host);
-                    return await browser.WaitPageResult();
-                }
-            }
-            catch
-            {
-                return null;
+                PlaywrightBase.GotoAsync(page, init.host);
+                return await browser.WaitPageResult();
             }
         }
-        #endregion
+        catch
+        {
+            return null;
+        }
     }
+    #endregion
 }

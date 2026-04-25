@@ -1,53 +1,75 @@
 ﻿using HtmlAgilityPack;
 using System.Text.RegularExpressions;
 
-namespace Shared.Services.HTML
+namespace Shared.Services.HTML;
+
+public class HtmlParse
 {
-    public class HtmlParse
+    public List<HtmlRowParse> nodes { get; private set; } = new List<HtmlRowParse>();
+
+    public HtmlParse(string html, string xpathNodes)
     {
-        public List<HtmlRowParse> nodes { get; private set; } = new List<HtmlRowParse>();
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
 
-        public HtmlParse(string html, string xpathNodes)
-        {
-            var doc = new HtmlDocument();
-            doc.LoadHtml(html);
+        var _nodes = doc.DocumentNode?.SelectNodes(xpathNodes);
+        if (_nodes == null)
+            return;
 
-            var _nodes = doc.DocumentNode?.SelectNodes(xpathNodes);
-            if (_nodes == null)
-                return;
-
-            foreach (var node in _nodes)
-                nodes.Add(new HtmlRowParse(node));
-        }
-
-        public static List<HtmlRowParse> Nodes(string html, string xpathNodes)
-        {
-            return new HtmlParse(html, xpathNodes).nodes;
-        }
+        foreach (var node in _nodes)
+            nodes.Add(new HtmlRowParse(node));
     }
 
-
-    public class HtmlRowParse
+    public static List<HtmlRowParse> Nodes(string html, string xpathNodes)
     {
-        public HtmlNode row { get; private set; }
+        return new HtmlParse(html, xpathNodes).nodes;
+    }
+}
 
-        public HtmlRowParse(HtmlNode node)
+
+public class HtmlRowParse
+{
+    public HtmlNode row { get; private set; }
+
+    public HtmlRowParse(HtmlNode node)
+    {
+        row = node;
+    }
+
+    #region SelectText
+    public string SelectText(string xpath, string attribute = null, string[] attributes = null)
+    {
+        string value = null;
+
+        if (string.IsNullOrEmpty(xpath) && (!string.IsNullOrEmpty(attribute) || attributes != null))
         {
-            row = node;
+            if (attributes != null)
+            {
+                foreach (var attr in attributes)
+                {
+                    string attrValue = row.GetAttributeValue(attr, null);
+                    if (!string.IsNullOrWhiteSpace(attrValue))
+                    {
+                        value = attrValue;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                value = row.GetAttributeValue(attribute, null);
+            }
         }
-
-        #region SelectText
-        public string SelectText(string xpath, string attribute = null, string[] attributes = null)
+        else
         {
-            string value = null;
-
-            if (string.IsNullOrEmpty(xpath) && (!string.IsNullOrEmpty(attribute) || attributes != null))
+            var inNode = row.SelectSingleNode(xpath);
+            if (inNode != null)
             {
                 if (attributes != null)
                 {
                     foreach (var attr in attributes)
                     {
-                        string attrValue = row.GetAttributeValue(attr, null);
+                        string attrValue = inNode.GetAttributeValue(attr, null);
                         if (!string.IsNullOrWhiteSpace(attrValue))
                         {
                             value = attrValue;
@@ -57,102 +79,79 @@ namespace Shared.Services.HTML
                 }
                 else
                 {
-                    value = row.GetAttributeValue(attribute, null);
+                    value = (!string.IsNullOrEmpty(attribute) ? inNode.GetAttributeValue(attribute, null) : inNode.InnerText);
                 }
             }
-            else
-            {
-                var inNode = row.SelectSingleNode(xpath);
-                if (inNode != null)
-                {
-                    if (attributes != null)
-                    {
-                        foreach (var attr in attributes)
-                        {
-                            string attrValue = inNode.GetAttributeValue(attr, null);
-                            if (!string.IsNullOrWhiteSpace(attrValue))
-                            {
-                                value = attrValue;
-                                break;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        value = (!string.IsNullOrEmpty(attribute) ? inNode.GetAttributeValue(attribute, null) : inNode.InnerText);
-                    }
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(value))
-                return null;
-
-            return value?.Trim();
         }
-        #endregion
 
-        #region SelectHtml
-        public string SelectHtml(string xpath)
-        {
-            var inNode = row.SelectSingleNode(xpath);
-            if (inNode != null)
-            {
-                string html = inNode.InnerHtml;
-                if (string.IsNullOrWhiteSpace(html))
-                    return null;
-
-                return inNode.InnerHtml;
-            }
-
+        if (string.IsNullOrWhiteSpace(value))
             return null;
-        }
-        #endregion
 
-        #region Regex
-        public string Regex(string xpath, string pattern, int index = 1, RegexOptions options = RegexOptions.IgnoreCase)
-        {
-            string html = SelectHtml(pattern);
-            if (string.IsNullOrWhiteSpace(html))
-                return null;
-
-            string res = System.Text.RegularExpressions.Regex.Match(html, pattern, options).Groups[index].Value;
-            if (string.IsNullOrWhiteSpace(res))
-                return null;
-
-            return res.Trim();
-        }
-
-        public string Regex(string xpath, string pattern, string groupName, RegexOptions options = RegexOptions.IgnoreCase)
-        {
-            string html = SelectHtml(pattern);
-            if (string.IsNullOrWhiteSpace(html))
-                return null;
-
-            string res = System.Text.RegularExpressions.Regex.Match(html, pattern, options).Groups[groupName].Value;
-            if (string.IsNullOrWhiteSpace(res))
-                return null;
-
-            return res.Trim();
-        }
-
-
-        public string Regex(string pattern, int index = 1, RegexOptions options = RegexOptions.IgnoreCase)
-        {
-            string res = System.Text.RegularExpressions.Regex.Match(row.InnerHtml, pattern, options).Groups[index].Value;
-            if (string.IsNullOrWhiteSpace(res))
-                return null;
-
-            return res.Trim();
-        }
-
-        public string Regex(string pattern, string groupName, RegexOptions options = RegexOptions.IgnoreCase)
-        {
-            string res = System.Text.RegularExpressions.Regex.Match(row.InnerHtml, pattern, options).Groups[groupName].Value;
-            if (string.IsNullOrWhiteSpace(res))
-                return null;
-
-            return res.Trim();
-        }
-        #endregion
+        return value?.Trim();
     }
+    #endregion
+
+    #region SelectHtml
+    public string SelectHtml(string xpath)
+    {
+        var inNode = row.SelectSingleNode(xpath);
+        if (inNode != null)
+        {
+            string html = inNode.InnerHtml;
+            if (string.IsNullOrWhiteSpace(html))
+                return null;
+
+            return inNode.InnerHtml;
+        }
+
+        return null;
+    }
+    #endregion
+
+    #region Regex
+    public string Regex(string xpath, string pattern, int index = 1, RegexOptions options = RegexOptions.IgnoreCase)
+    {
+        string html = SelectHtml(pattern);
+        if (string.IsNullOrWhiteSpace(html))
+            return null;
+
+        string res = System.Text.RegularExpressions.Regex.Match(html, pattern, options).Groups[index].Value;
+        if (string.IsNullOrWhiteSpace(res))
+            return null;
+
+        return res.Trim();
+    }
+
+    public string Regex(string xpath, string pattern, string groupName, RegexOptions options = RegexOptions.IgnoreCase)
+    {
+        string html = SelectHtml(pattern);
+        if (string.IsNullOrWhiteSpace(html))
+            return null;
+
+        string res = System.Text.RegularExpressions.Regex.Match(html, pattern, options).Groups[groupName].Value;
+        if (string.IsNullOrWhiteSpace(res))
+            return null;
+
+        return res.Trim();
+    }
+
+
+    public string Regex(string pattern, int index = 1, RegexOptions options = RegexOptions.IgnoreCase)
+    {
+        string res = System.Text.RegularExpressions.Regex.Match(row.InnerHtml, pattern, options).Groups[index].Value;
+        if (string.IsNullOrWhiteSpace(res))
+            return null;
+
+        return res.Trim();
+    }
+
+    public string Regex(string pattern, string groupName, RegexOptions options = RegexOptions.IgnoreCase)
+    {
+        string res = System.Text.RegularExpressions.Regex.Match(row.InnerHtml, pattern, options).Groups[groupName].Value;
+        if (string.IsNullOrWhiteSpace(res))
+            return null;
+
+        return res.Trim();
+    }
+    #endregion
 }

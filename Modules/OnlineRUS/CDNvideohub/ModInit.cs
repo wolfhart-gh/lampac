@@ -7,55 +7,54 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace CDNvideohub
+namespace CDNvideohub;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if (args.kinopoisk_id > 0)
+            online.Add(new(conf, "cdnvideohub", "VideoHUB"));
+
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("CDNvideohub", new OnlinesSettings("CDNvideohub", "https://plapi.cdnvideohub.com", streamproxy: true)
         {
-            var online = new List<ModuleOnlineItem>();
+            displayindex = 540,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors",
+            httpversion = 2,
+            headers = HeadersModel.Init(Http.defaultFullHeaders,
+                ("referer", "https://hdkino.pub/"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "cross-site")
+            ).ToDictionary()
+        });
+    }
 
-            if (args.kinopoisk_id > 0)
-                online.Add(new(conf, "cdnvideohub", "VideoHUB"));
-
-            return online;
-        }
-
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("CDNvideohub", new OnlinesSettings("CDNvideohub", "https://plapi.cdnvideohub.com", streamproxy: true)
-            {
-                displayindex = 540,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors",
-                httpversion = 2,
-                headers = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("referer", "https://hdkino.pub/"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "cross-site")
-                ).ToDictionary()
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "cdnvideohub" ? " ~ 2160p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "cdnvideohub" ? " ~ 2160p" : null;
     }
 }

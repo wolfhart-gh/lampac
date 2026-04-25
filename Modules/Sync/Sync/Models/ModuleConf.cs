@@ -1,9 +1,8 @@
 ﻿using Shared.Models.Module;
 
-namespace Sync.Models
+namespace Sync;
+
+public class ModuleConf : ModuleBaseConf
 {
-    public class ModuleConf : ModuleBaseConf
-    {
-        public bool fullset { get; set; }
-    }
+    public bool fullset { get; set; }
 }

@@ -1,9 +1,8 @@
 ﻿using Shared.Models.Module;
 
-namespace Storage
+namespace Storage;
+
+public class ModuleConf : ModuleBaseConf
 {
-    public class ModuleConf : ModuleBaseConf
-    {
-        public bool enableTemp { get; set; }
-    }
+    public bool enableTemp { get; set; }
 }

@@ -1,13 +1,12 @@
-﻿namespace Shared.Models.Base
+﻿namespace Shared.Models.Base;
+
+public interface Iproxy
 {
-    public interface Iproxy
-    {
-        public bool useproxy { get; set; }
+    public bool useproxy { get; set; }
 
-        public bool useproxystream { get; set; }
+    public bool useproxystream { get; set; }
 
-        public string globalnameproxy { get; set; }
+    public string globalnameproxy { get; set; }
 
-        public ProxySettings proxy { get; set; }
-    }
+    public ProxySettings proxy { get; set; }
 }

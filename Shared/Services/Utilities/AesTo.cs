@@ -1,160 +1,159 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
 
-namespace Shared.Services.Utilities
+namespace Shared.Services.Utilities;
+
+public static class AesTo
 {
-    public static class AesTo
+    #region Encrypt
+    public static string Encrypt(ReadOnlySpan<char> plainText)
     {
-        #region Encrypt
-        public static string Encrypt(ReadOnlySpan<char> plainText)
+        if (plainText.IsEmpty)
+            return string.Empty;
+
+        try
         {
-            if (plainText.IsEmpty)
-                return string.Empty;
+            var aesinst = AesPool.Instance;
+
+            int capacity = Encoding.UTF8.GetMaxByteCount(plainText.Length);
+
+            BufferBytePool cipherBuf = null;
+            if (capacity > aesinst.ByteBuffer.Length)
+                cipherBuf = new BufferBytePool(capacity);
 
             try
             {
-                var aesinst = AesPool.Instance;
+                Span<byte> cipher = cipherBuf != null
+                    ? cipherBuf.Span
+                    : aesinst.ByteBuffer;
 
-                int capacity = Encoding.UTF8.GetMaxByteCount(plainText.Length);
+                int writtenPlain = Encoding.UTF8.GetBytes(plainText, cipher);
+                if (writtenPlain <= 0)
+                    return string.Empty;
 
-                BufferBytePool cipherBuf = null;
-                if (capacity > aesinst.ByteBuffer.Length)
-                    cipherBuf = new BufferBytePool(capacity);
+                int blockSize = aesinst.Aes.BlockSize / 8; // 16
+                int paddedLen = ((writtenPlain / blockSize) + 1) * blockSize;
+
+                BufferBytePool destBuf = null;
+                if (paddedLen > aesinst.DestBuffer.Length)
+                    destBuf = new BufferBytePool(paddedLen);
 
                 try
                 {
-                    Span<byte> cipher = cipherBuf != null
-                        ? cipherBuf.Span
-                        : aesinst.ByteBuffer;
+                    Span<byte> dest = destBuf != null
+                        ? destBuf.Span
+                        : aesinst.DestBuffer;
 
-                    int writtenPlain = Encoding.UTF8.GetBytes(plainText, cipher);
-                    if (writtenPlain <= 0)
+                    // ВАЖНО: iv вторым параметром, destination третьим
+                    int cipherLen = aesinst.Aes.EncryptCbc(
+                        cipher.Slice(0, writtenPlain),
+                        aesinst.Aes.IV,  // iv (16 байт)
+                        dest,    // destination
+                        PaddingMode.PKCS7);
+
+                    if (cipherLen <= 0)
                         return string.Empty;
 
-                    int blockSize = aesinst.Aes.BlockSize / 8; // 16
-                    int paddedLen = ((writtenPlain / blockSize) + 1) * blockSize;
+                    capacity = ((cipherLen + 2) / 3) * 4;
 
-                    BufferBytePool destBuf = null;
-                    if (paddedLen > aesinst.DestBuffer.Length)
-                        destBuf = new BufferBytePool(paddedLen);
+                    BufferCharPool base64Chars = null;
+                    if (capacity > aesinst.CharBuffer.Length)
+                        base64Chars = new BufferCharPool(capacity);
 
                     try
                     {
-                        Span<byte> dest = destBuf != null
-                            ? destBuf.Span
-                            : aesinst.DestBuffer;
+                        Span<char> buffer = base64Chars != null
+                            ? base64Chars.Span
+                            : aesinst.CharBuffer;
 
-                        // ВАЖНО: iv вторым параметром, destination третьим
-                        int cipherLen = aesinst.Aes.EncryptCbc(
-                            cipher.Slice(0, writtenPlain),
-                            aesinst.Aes.IV,  // iv (16 байт)
-                            dest,    // destination
-                            PaddingMode.PKCS7);
-
-                        if (cipherLen <= 0)
+                        if (!Convert.TryToBase64Chars(dest.Slice(0, cipherLen), buffer, out int charsWritten))
                             return string.Empty;
 
-                        capacity = ((cipherLen + 2) / 3) * 4;
-
-                        BufferCharPool base64Chars = null;
-                        if (capacity > aesinst.CharBuffer.Length)
-                            base64Chars = new BufferCharPool(capacity);
-
-                        try
-                        {
-                            Span<char> buffer = base64Chars != null
-                                ? base64Chars.Span
-                                : aesinst.CharBuffer;
-
-                            if (!Convert.TryToBase64Chars(dest.Slice(0, cipherLen), buffer, out int charsWritten))
-                                return string.Empty;
-
-                            return new string(buffer.Slice(0, charsWritten));
-                        }
-                        finally
-                        {
-                            base64Chars?.Dispose();
-                        }
+                        return new string(buffer.Slice(0, charsWritten));
                     }
                     finally
                     {
-                        destBuf?.Dispose();
+                        base64Chars?.Dispose();
                     }
                 }
                 finally
                 {
-                    cipherBuf?.Dispose();
+                    destBuf?.Dispose();
                 }
             }
-            catch
+            finally
             {
-                return string.Empty;
+                cipherBuf?.Dispose();
             }
         }
-        #endregion
-
-        #region Decrypt
-        public static string Decrypt(ReadOnlySpan<char> cipherText)
+        catch
         {
-            if (cipherText.IsEmpty)
-                return null;
+            return string.Empty;
+        }
+    }
+    #endregion
+
+    #region Decrypt
+    public static string Decrypt(ReadOnlySpan<char> cipherText)
+    {
+        if (cipherText.IsEmpty)
+            return null;
+
+        try
+        {
+            var aesinst = AesPool.Instance;
+
+            int capacity = Encoding.UTF8.GetMaxByteCount(cipherText.Length);
+
+            BufferBytePool cipherBuf = null;
+            if (capacity > aesinst.ByteBuffer.Length)
+                cipherBuf = new BufferBytePool(capacity);
 
             try
             {
-                var aesinst = AesPool.Instance;
+                Span<byte> cipher = cipherBuf != null
+                    ? cipherBuf.Span
+                    : aesinst.ByteBuffer;
 
-                int capacity = Encoding.UTF8.GetMaxByteCount(cipherText.Length);
+                if (!Convert.TryFromBase64Chars(cipherText, cipher, out int cipherLen))
+                    return null;
 
-                BufferBytePool cipherBuf = null;
-                if (capacity > aesinst.ByteBuffer.Length)
-                    cipherBuf = new BufferBytePool(capacity);
+                BufferBytePool destBuf = null;
+                if (cipherLen > aesinst.DestBuffer.Length)
+                    destBuf = new BufferBytePool(cipherLen);
 
                 try
                 {
-                    Span<byte> cipher = cipherBuf != null
-                        ? cipherBuf.Span
-                        : aesinst.ByteBuffer;
+                    Span<byte> dest = destBuf != null
+                        ? destBuf.Span
+                        : aesinst.DestBuffer;
 
-                    if (!Convert.TryFromBase64Chars(cipherText, cipher, out int cipherLen))
+                    // ВАЖНО: iv вторым параметром, destination третьим
+                    int plainLen = aesinst.Aes.DecryptCbc(
+                        cipher.Slice(0, cipherLen),
+                        aesinst.Aes.IV,  // iv (16 байт)
+                        dest,    // destination
+                        PaddingMode.PKCS7);
+
+                    if (plainLen <= 0)
                         return null;
 
-                    BufferBytePool destBuf = null;
-                    if (cipherLen > aesinst.DestBuffer.Length)
-                        destBuf = new BufferBytePool(cipherLen);
-
-                    try
-                    {
-                        Span<byte> dest = destBuf != null
-                            ? destBuf.Span
-                            : aesinst.DestBuffer;
-
-                        // ВАЖНО: iv вторым параметром, destination третьим
-                        int plainLen = aesinst.Aes.DecryptCbc(
-                            cipher.Slice(0, cipherLen),
-                            aesinst.Aes.IV,  // iv (16 байт)
-                            dest,    // destination
-                            PaddingMode.PKCS7);
-
-                        if (plainLen <= 0)
-                            return null;
-
-                        return Encoding.UTF8.GetString(dest.Slice(0, plainLen));
-                    }
-                    finally
-                    {
-                        destBuf?.Dispose();
-                    }
+                    return Encoding.UTF8.GetString(dest.Slice(0, plainLen));
                 }
                 finally
                 {
-                    cipherBuf?.Dispose();
+                    destBuf?.Dispose();
                 }
             }
-            catch
+            finally
             {
-                return null;
+                cipherBuf?.Dispose();
             }
         }
-        #endregion
+        catch
+        {
+            return null;
+        }
     }
+    #endregion
 }

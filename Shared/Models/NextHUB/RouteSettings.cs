@@ -1,7 +1,6 @@
-﻿namespace Shared.Models.SISI.NextHUB
+﻿namespace Shared.Models.SISI.NextHUB;
+
+public class RouteSettings
 {
-    public class RouteSettings
-    {
-        public string eval { get; set; }
-    }
+    public string eval { get; set; }
 }

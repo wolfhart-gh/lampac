@@ -7,76 +7,75 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace Tizam
+namespace Tizam;
+
+public class TizamController : BaseSisiController
 {
-    public class TizamController : BaseSisiController
+    static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
+
+    public TizamController() : base(ModInit.conf)
     {
-        static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
-
-        public TizamController() : base(ModInit.conf)
+        requestInitialization += () =>
         {
-            requestInitialization += () =>
-            {
-                if (init.httpversion == 1)
-                    httpHydra.RegisterHttp(httpClient);
-            };
-        }
+            if (init.httpversion == 1)
+                httpHydra.RegisterHttp(httpClient);
+        };
+    }
 
-        [HttpGet]
-        [Staticache]
-        [Route("tizam")]
-        async public Task<ActionResult> Index(string search, int pg = 1)
+    [HttpGet]
+    [Staticache]
+    [Route("tizam")]
+    async public Task<ActionResult> Index(string search, int pg = 1)
+    {
+        if (!string.IsNullOrEmpty(search))
+            return OnError("no search", false);
+
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult($"tizam:{pg}", 60, jsonContext.ListPlaylistItem, async e =>
         {
-            if (!string.IsNullOrEmpty(search))
-                return OnError("no search", false);
+            List<PlaylistItem> playlists = null;
 
-            if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-                return badInitMsg;
-
-            rhubFallback:
-            var cache = await InvokeCacheResult($"tizam:{pg}", 60, jsonContext.ListPlaylistItem, async e =>
+            await httpHydra.GetSpan(TizamTo.Uri(init.host, pg), span =>
             {
-                List<PlaylistItem> playlists = null;
-
-                await httpHydra.GetSpan(TizamTo.Uri(init.host, pg), span =>
-                {
-                    playlists = TizamTo.Playlist(init.host, span);
-                });
-
-                if (playlists == null || playlists.Count == 0)
-                    return e.Fail("playlists", refresh_proxy: true);
-
-                return e.Success(playlists);
+                playlists = TizamTo.Playlist(init.host, span);
             });
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
+            if (playlists == null || playlists.Count == 0)
+                return e.Fail("playlists", refresh_proxy: true);
 
-            return PlaylistResult(cache);
-        }
+            return e.Success(playlists);
+        });
 
-        [HttpGet]
-        [Staticache]
-        [Route("tizam/vidosik")]
-        async public Task<ActionResult> Index(string uri)
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
+
+        return PlaylistResult(cache);
+    }
+
+    [HttpGet]
+    [Staticache]
+    [Route("tizam/vidosik")]
+    async public Task<ActionResult> Index(string uri)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult($"tizam:view:{uri}", 180, jsonContext.StreamItem, async e =>
         {
-            if (await IsRequestBlocked(rch: true))
-                return badInitMsg;
+            var stream = await TizamTo.Stream(httpHydra, init.host, uri);
+            if (stream == null)
+                return e.Fail("location", refresh_proxy: true);
 
-            rhubFallback:
-            var cache = await InvokeCacheResult($"tizam:view:{uri}", 180, jsonContext.StreamItem, async e =>
-            {
-                var stream = await TizamTo.Stream(httpHydra, init.host, uri);
-                if (stream == null)
-                    return e.Fail("location", refresh_proxy: true);
+            return e.Success(stream);
+        });
 
-                return e.Success(stream);
-            });
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
-
-            return OnResult(cache);
-        }
+        return OnResult(cache);
     }
 }

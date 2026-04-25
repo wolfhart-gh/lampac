@@ -5,45 +5,44 @@ using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
 using Shared.Services;
 
-namespace VideoDB
+namespace VideoDB;
+
+public class ModInit : IModuleLoaded
 {
-    public class ModInit : IModuleLoaded
+    public static OnlinesSettings conf;
+
+    public void Loaded(InitspaceModel baseconf)
     {
-        public static OnlinesSettings conf;
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+    }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
 
-        public void Dispose()
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("VideoDB", new OnlinesSettings("VideoDB", "https://kinogo.media", streamproxy: true)
         {
-            EventListener.UpdateInitFile -= updateConf;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("VideoDB", new OnlinesSettings("VideoDB", "https://kinogo.media", streamproxy: true)
-            {
-                httpversion = 2,
-                rch_access = "apk",
-                stream_access = "apk,cors,web",
-                priorityBrowser = "http",
-                imitationHuman = true,
-                headers = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("sec-fetch-storage-access", "active"),
-                    ("upgrade-insecure-requests", "1")
-                ).ToDictionary(),
-                headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("accept", "*/*"),
-                    ("origin", "https://kinogo.media"),
-                    ("referer", "https://kinogo.media/"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "same-site")
-                ).ToDictionary()
-            });
-        }
+            httpversion = 2,
+            rch_access = "apk",
+            stream_access = "apk,cors,web",
+            priorityBrowser = "http",
+            imitationHuman = true,
+            headers = HeadersModel.Init(Http.defaultFullHeaders,
+                ("sec-fetch-storage-access", "active"),
+                ("upgrade-insecure-requests", "1")
+            ).ToDictionary(),
+            headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
+                ("accept", "*/*"),
+                ("origin", "https://kinogo.media"),
+                ("referer", "https://kinogo.media/"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "same-site")
+            ).ToDictionary()
+        });
     }
 }

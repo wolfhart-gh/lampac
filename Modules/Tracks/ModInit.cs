@@ -7,41 +7,40 @@ using Shared.Models.Module.Interfaces;
 using System.Collections.Generic;
 using System.IO;
 
-namespace Tracks
+namespace Tracks;
+
+public class ModInit : IModuleLoaded
 {
-    public class ModInit : IModuleLoaded
+    public static string modpath;
+    public static ModuleConf conf;
+
+    public void Loaded(InitspaceModel initspace)
     {
-        public static string modpath;
-        public static ModuleConf conf;
+        modpath = initspace.path;
 
-        public void Loaded(InitspaceModel initspace)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+
+        foreach (var m in conf.limit_map)
+            CoreInit.conf.WAF.limit_map.Insert(0, m);
+
+        Directory.CreateDirectory("database/tracks");
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Tracks", new ModuleConf()
         {
-            modpath = initspace.path;
-
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-
-            foreach (var m in conf.limit_map)
-                CoreInit.conf.WAF.limit_map.Insert(0, m);
-
-            Directory.CreateDirectory("database/tracks");
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Tracks", new ModuleConf()
+            tsuri = null,
+            limit_map = new List<WafLimitRootMap>()
             {
-                tsuri = null,
-                limit_map = new List<WafLimitRootMap>()
-                {
-                    new("^/ffprobe", new WafLimitMap { limit = 10, second = 1 })
-                }
-            });
-        }
+                new("^/ffprobe", new WafLimitMap { limit = 10, second = 1 })
+            }
+        });
     }
 }

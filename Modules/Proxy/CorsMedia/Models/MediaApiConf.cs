@@ -1,9 +1,8 @@
 ﻿using System;
 
-namespace CorsMedia
+namespace CorsMedia;
+
+public class MediaApiConf
 {
-    public class MediaApiConf
-    {
-        public string[] tokens { get; set; } = Array.Empty<string>();
-    }
+    public string[] tokens { get; set; } = Array.Empty<string>();
 }

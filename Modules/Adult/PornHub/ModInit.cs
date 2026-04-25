@@ -6,43 +6,42 @@ using Shared.Models.Module.Interfaces;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace PornHub
+namespace PornHub;
+
+public class ModInit : IModuleLoaded, IModuleSisi
 {
-    public class ModInit : IModuleLoaded, IModuleSisi
+    public static ModuleConf conf;
+
+    public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
     {
-        public static ModuleConf conf;
-
-        public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
+        var channels = new List<SisiModuleItem>()
         {
-            var channels = new List<SisiModuleItem>()
-            {
-                new("pornhub.com", conf.PornHub, "phub"),
-                new("pornhubpremium.com", conf.PornHubPremium, "phubprem")
-            };
+            new("pornhub.com", conf.PornHub, "phub"),
+            new("pornhubpremium.com", conf.PornHubPremium, "phubprem")
+        };
 
-            if (args.lgbt)
-            {
-                channels.Add(new("phubgay", conf.PornHub, "phubgay", 10_100));
-                channels.Add(new("phubtrans", conf.PornHub, "phubsml", 10_101));
-            }
-
-            return channels;
+        if (args.lgbt)
+        {
+            channels.Add(new("phubgay", conf.PornHub, "phubgay", 10_100));
+            channels.Add(new("phubtrans", conf.PornHub, "phubsml", 10_101));
         }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-        }
+        return channels;
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+    }
 
-        void updateConf()
-        {
-            conf = ModuleInvoke.DeserializeInit(new ModuleConf());
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.DeserializeInit(new ModuleConf());
     }
 }

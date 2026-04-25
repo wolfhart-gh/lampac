@@ -9,66 +9,65 @@ using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace TwoEmbed
+namespace TwoEmbed;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
         {
-            var online = new List<ModuleOnlineItem>();
-
-            if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
+            if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
             {
-                if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
-                {
-                    if (Firefox.Status != PlaywrightStatus.disabled)
-                        online.Add(new(conf, "twoembed", "2Embed", " (ENG)"));
-                }
+                if (Firefox.Status != PlaywrightStatus.disabled)
+                    online.Add(new(conf, "twoembed", "2Embed", " (ENG)"));
             }
-
-            return online;
         }
 
-        public void Loaded(InitspaceModel baseconf)
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        UpdateConf();
+        EventListener.UpdateInitFile += UpdateConf;
+        EventListener.OnlineApiQuality += OnlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= UpdateConf;
+        EventListener.OnlineApiQuality -= OnlineApiQuality;
+    }
+
+    private void UpdateConf()
+    {
+        /// <summary>
+        /// EmbedSu
+        /// </summary>
+        conf = ModuleInvoke.Init("Twoembed", new OnlinesSettings("Twoembed", "https://embed.su")
         {
-            UpdateConf();
-            EventListener.UpdateInitFile += UpdateConf;
-            EventListener.OnlineApiQuality += OnlineApiQuality;
-        }
+            enable = false,
+            displayindex = 1045,
+            streamproxy = true,
+            headers_stream = HeadersModel.Init(
+                ("accept", "*/*"),
+                ("accept-language", "en-US,en;q=0.5"),
+                ("referer", "https://embed.su/"),
+                ("origin", "https://embed.su"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "cross-site")
+            ).ToDictionary()
+        });
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= UpdateConf;
-            EventListener.OnlineApiQuality -= OnlineApiQuality;
-        }
-
-        private void UpdateConf()
-        {
-            /// <summary>
-            /// EmbedSu
-            /// </summary>
-            conf = ModuleInvoke.Init("Twoembed", new OnlinesSettings("Twoembed", "https://embed.su")
-            {
-                enable = false,
-                displayindex = 1045,
-                streamproxy = true,
-                headers_stream = HeadersModel.Init(
-                    ("accept", "*/*"),
-                    ("accept-language", "en-US,en;q=0.5"),
-                    ("referer", "https://embed.su/"),
-                    ("origin", "https://embed.su"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "cross-site")
-                ).ToDictionary()
-            });
-        }
-
-        private string OnlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "twoembed" ? " ~ 1080p" : null;
-        }
+    private string OnlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "twoembed" ? " ~ 1080p" : null;
     }
 }

@@ -13,217 +13,216 @@ using System.Threading;
 using System.Threading.Tasks;
 using Shared.Services.Utilities;
 
-namespace TorrServer
+namespace TorrServer;
+
+public class ModInit : IModuleLoaded
 {
-    public class ModInit : IModuleLoaded
+    #region static
+    public static string modpath;
+    public static ModuleConf conf;
+    static readonly Serilog.ILogger Log = Serilog.Log.ForContext<ModInit>();
+
+    static bool IsShutdown;
+
+    public static string tspass = CrypTo.md5(DateTime.Now.ToBinary().ToString());
+
+    public static string homedir;
+
+    public static string tspath;
+
+    public static Process tsprocess;
+    #endregion
+
+    #region loaded
+    public void Loaded(InitspaceModel baseconf)
     {
-        #region static
-        public static string modpath;
-        public static ModuleConf conf;
-        static readonly Serilog.ILogger Log = Serilog.Log.ForContext<ModInit>();
+        modpath = baseconf.path;
 
-        static bool IsShutdown;
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
 
-        public static string tspass = CrypTo.md5(DateTime.Now.ToBinary().ToString());
+        foreach (var m in conf.limit_map)
+            CoreInit.conf.WAF.limit_map.Insert(0, m);
 
-        public static string homedir;
+        CoreInit.BaseModPathWhiteList.Add("/ts/");
 
-        public static string tspath;
+        #region homedir
+        homedir = Directory.GetCurrentDirectory();
+        if (string.IsNullOrWhiteSpace(homedir) || homedir == "/")
+            homedir = string.Empty;
 
-        public static Process tsprocess;
+        homedir = Path.Combine(homedir, "data", "ts");
         #endregion
 
-        #region loaded
-        public void Loaded(InitspaceModel baseconf)
+        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+            tspath = Path.Combine(homedir, "TorrServer-windows-amd64.exe");
+        else
         {
-            modpath = baseconf.path;
+            tspath = Path.Combine(homedir, "TorrServer-linux");
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
+            if (File.Exists(tspath))
+                Bash.Comand($"chmod +x {tspath}");
+        }
 
-            foreach (var m in conf.limit_map)
-                CoreInit.conf.WAF.limit_map.Insert(0, m);
+        if (!File.Exists(tspath))
+        {
+            Directory.CreateDirectory(homedir);
+            File.Copy($"{modpath}/settings.json", Path.Combine(homedir, "settings.json"), true);
+        }
 
-            CoreInit.BaseModPathWhiteList.Add("/ts/");
+        File.WriteAllText(Path.Combine(homedir, "accs.db"), $"{{\"ts\":\"{tspass}\"}}");
 
-            #region homedir
-            homedir = Directory.GetCurrentDirectory();
-            if (string.IsNullOrWhiteSpace(homedir) || homedir == "/")
-                homedir = string.Empty;
-
-            homedir = Path.Combine(homedir, "data", "ts");
-            #endregion
-
+        ThreadPool.QueueUserWorkItem(async _ =>
+        {
+            #region downloadUrl
+            string downloadUrl;
             if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-                tspath = Path.Combine(homedir, "TorrServer-windows-amd64.exe");
+            {
+                downloadUrl = "https://github.com/YouROK/TorrServer/releases/latest/download/TorrServer-windows-amd64.exe";
+                if (conf.releases != "latest")
+                    downloadUrl = $"https://github.com/YouROK/TorrServer/releases/download/{conf.releases}/TorrServer-windows-amd64.exe";
+            }
             else
             {
-                tspath = Path.Combine(homedir, "TorrServer-linux");
+                string uname = (await Bash.ComandAsync("uname -m")) ?? string.Empty;
+                string arch = uname.Contains("x86_64") ? "amd64" : (uname.Contains("i386") || uname.Contains("i686")) ? "386" : uname.Contains("aarch64") ? "arm64" : uname.Contains("armv7") ? "arm7" : uname.Contains("armv6") ? "arm5" : "amd64";
 
-                if (File.Exists(tspath))
-                    Bash.Comand($"chmod +x {tspath}");
+                downloadUrl = "https://github.com/YouROK/TorrServer/releases/latest/download/TorrServer-linux-" + arch;
+                if (conf.releases != "latest")
+                    downloadUrl = $"https://github.com/YouROK/TorrServer/releases/download/{conf.releases}/TorrServer-linux-" + arch;
             }
+            #endregion
 
-            if (!File.Exists(tspath))
+            #region updatet/install
+            async Task install()
             {
-                Directory.CreateDirectory(homedir);
-                File.Copy($"{modpath}/settings.json", Path.Combine(homedir, "settings.json"), true);
-            }
-
-            File.WriteAllText(Path.Combine(homedir, "accs.db"), $"{{\"ts\":\"{tspass}\"}}");
-
-            ThreadPool.QueueUserWorkItem(async _ =>
-            {
-                #region downloadUrl
-                string downloadUrl;
-                if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                try
                 {
-                    downloadUrl = "https://github.com/YouROK/TorrServer/releases/latest/download/TorrServer-windows-amd64.exe";
-                    if (conf.releases != "latest")
-                        downloadUrl = $"https://github.com/YouROK/TorrServer/releases/download/{conf.releases}/TorrServer-windows-amd64.exe";
-                }
-                else
-                {
-                    string uname = (await Bash.ComandAsync("uname -m")) ?? string.Empty;
-                    string arch = uname.Contains("x86_64") ? "amd64" : (uname.Contains("i386") || uname.Contains("i686")) ? "386" : uname.Contains("aarch64") ? "arm64" : uname.Contains("armv7") ? "arm7" : uname.Contains("armv6") ? "arm5" : "amd64";
-
-                    downloadUrl = "https://github.com/YouROK/TorrServer/releases/latest/download/TorrServer-linux-" + arch;
-                    if (conf.releases != "latest")
-                        downloadUrl = $"https://github.com/YouROK/TorrServer/releases/download/{conf.releases}/TorrServer-linux-" + arch;
-                }
-                #endregion
-
-                #region updatet/install
-                async Task install()
-                {
-                    try
+                    if (conf.releases == "latest")
                     {
-                        if (conf.releases == "latest")
+                        var root = await Http.Get<JObject>("https://api.github.com/repos/YouROK/TorrServer/releases/latest");
+                        if (root != null && root.ContainsKey("tag_name"))
                         {
-                            var root = await Http.Get<JObject>("https://api.github.com/repos/YouROK/TorrServer/releases/latest");
-                            if (root != null && root.ContainsKey("tag_name"))
+                            string tagname = root.Value<string>("tag_name");
+                            if (!string.IsNullOrEmpty(tagname))
                             {
-                                string tagname = root.Value<string>("tag_name");
-                                if (!string.IsNullOrEmpty(tagname))
+                                if (!File.Exists($"{homedir}/tagname") || tagname != File.ReadAllText($"{homedir}/tagname"))
                                 {
-                                    if (!File.Exists($"{homedir}/tagname") || tagname != File.ReadAllText($"{homedir}/tagname"))
-                                    {
-                                        if (File.Exists(tspath))
-                                            File.Delete(tspath);
+                                    if (File.Exists(tspath))
+                                        File.Delete(tspath);
 
-                                        File.WriteAllText($"{homedir}/tagname", tagname);
-                                    }
+                                    File.WriteAllText($"{homedir}/tagname", tagname);
                                 }
                             }
                         }
+                    }
 
-                        if (!File.Exists(tspath))
+                    if (!File.Exists(tspath))
+                    {
+                        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
                         {
-                            if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-                            {
-                                tsprocess?.Dispose();
-                                bool success = await Http.DownloadFile(downloadUrl, tspath, timeoutSeconds: 200);
-                                if (!success)
-                                    File.Delete(tspath);
-                            }
+                            tsprocess?.Dispose();
+                            bool success = await Http.DownloadFile(downloadUrl, tspath, timeoutSeconds: 200);
+                            if (!success)
+                                File.Delete(tspath);
+                        }
+                        else
+                        {
+                            tsprocess?.Dispose();
+                            bool success = await Http.DownloadFile(downloadUrl, tspath, timeoutSeconds: 200);
+                            if (success)
+                                Bash.Comand($"chmod +x {tspath}");
                             else
-                            {
-                                tsprocess?.Dispose();
-                                bool success = await Http.DownloadFile(downloadUrl, tspath, timeoutSeconds: 200);
-                                if (success)
-                                    Bash.Comand($"chmod +x {tspath}");
-                                else
-                                    Bash.Comand($"rm -f {tspath}");
-                            }
+                                Bash.Comand($"rm -f {tspath}");
                         }
                     }
-                    catch (System.Exception ex)
-                    {
-                        Log.Error(ex, "CatchId={CatchId}", "id_h3zt61bu");
-                    }
                 }
-
-                await install();
-
-                if (!File.Exists(tspath))
+                catch (System.Exception ex)
                 {
+                    Log.Error(ex, "CatchId={CatchId}", "id_h3zt61bu");
+                }
+            }
+
+            await install();
+
+            if (!File.Exists(tspath))
+            {
+                await Task.Delay(10_000);
+                await install();
+            }
+
+            if (!File.Exists("isdocker") && conf.checkfile)
+            {
+                var response = await Http.ResponseHeaders(downloadUrl, timeoutSeconds: 10, allowAutoRedirect: true);
+                if (response != null && response.Content.Headers.ContentLength.HasValue && new FileInfo(tspath).Length != response.Content.Headers.ContentLength.Value)
+                {
+                    File.Delete(tspath);
                     await Task.Delay(10_000);
                     await install();
                 }
-
-                if (!File.Exists("isdocker") && conf.checkfile)
-                {
-                    var response = await Http.ResponseHeaders(downloadUrl, timeoutSeconds: 10, allowAutoRedirect: true);
-                    if (response != null && response.Content.Headers.ContentLength.HasValue && new FileInfo(tspath).Length != response.Content.Headers.ContentLength.Value)
-                    {
-                        File.Delete(tspath);
-                        await Task.Delay(10_000);
-                        await install();
-                    }
-                }
-                #endregion
-
-                while (!IsShutdown && File.Exists(tspath))
-                {
-                    try
-                    {
-                        tsprocess = new Process();
-                        tsprocess.StartInfo.UseShellExecute = false;
-                        tsprocess.StartInfo.RedirectStandardOutput = true;
-                        tsprocess.StartInfo.RedirectStandardError = true;
-                        tsprocess.StartInfo.FileName = tspath;
-                        tsprocess.StartInfo.Arguments = $"--httpauth -p {conf.tsport} -d \"{homedir}\"";
-
-                        tsprocess.Start();
-
-                        tsprocess.OutputDataReceived += (sender, args) => { };
-                        tsprocess.ErrorDataReceived += (sender, args) => { };
-                        tsprocess.BeginOutputReadLine();
-                        tsprocess.BeginErrorReadLine();
-
-                        await tsprocess.WaitForExitAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error(ex, "CatchId={CatchId}", "id_7p35pgty");
-                    }
-
-                    await Task.Delay(10_000);
-                }
-            });
-        }
-        #endregion
-
-        #region Dispose
-        public void Dispose()
-        {
-            try
-            {
-                IsShutdown = true;
-                tsprocess?.Kill(true);
             }
-            catch (System.Exception ex)
-            {
-                Log.Error(ex, "CatchId={CatchId}", "id_g06k67q3");
-            }
+            #endregion
 
-            EventListener.UpdateInitFile -= updateConf;
-        }
-        #endregion
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("TorrServer", new ModuleConf()
+            while (!IsShutdown && File.Exists(tspath))
             {
-                tsport = 9085,
-                releases = "MatriX.135",
-                defaultPasswd = "ts",
-                checkfile = true,
-                limit_map = new List<WafLimitRootMap>()
+                try
                 {
-                    new("^/ts/", new WafLimitMap { limit = 50, second = 1 })
+                    tsprocess = new Process();
+                    tsprocess.StartInfo.UseShellExecute = false;
+                    tsprocess.StartInfo.RedirectStandardOutput = true;
+                    tsprocess.StartInfo.RedirectStandardError = true;
+                    tsprocess.StartInfo.FileName = tspath;
+                    tsprocess.StartInfo.Arguments = $"--httpauth -p {conf.tsport} -d \"{homedir}\"";
+
+                    tsprocess.Start();
+
+                    tsprocess.OutputDataReceived += (sender, args) => { };
+                    tsprocess.ErrorDataReceived += (sender, args) => { };
+                    tsprocess.BeginOutputReadLine();
+                    tsprocess.BeginErrorReadLine();
+
+                    await tsprocess.WaitForExitAsync();
                 }
-            });
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "CatchId={CatchId}", "id_7p35pgty");
+                }
+
+                await Task.Delay(10_000);
+            }
+        });
+    }
+    #endregion
+
+    #region Dispose
+    public void Dispose()
+    {
+        try
+        {
+            IsShutdown = true;
+            tsprocess?.Kill(true);
         }
+        catch (System.Exception ex)
+        {
+            Log.Error(ex, "CatchId={CatchId}", "id_g06k67q3");
+        }
+
+        EventListener.UpdateInitFile -= updateConf;
+    }
+    #endregion
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("TorrServer", new ModuleConf()
+        {
+            tsport = 9085,
+            releases = "MatriX.135",
+            defaultPasswd = "ts",
+            checkfile = true,
+            limit_map = new List<WafLimitRootMap>()
+            {
+                new("^/ts/", new WafLimitMap { limit = 50, second = 1 })
+            }
+        });
     }
 }

@@ -9,57 +9,56 @@ using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace HydraFlix
+namespace HydraFlix;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
         {
-            var online = new List<ModuleOnlineItem>();
-
-            if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
+            if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long _id) && _id > 0)
             {
-                if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long _id) && _id > 0)
-                {
-                    if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
-                        online.Add(new(conf, "hydraflix", "HydraFlix", " (ENG)"));
-                }
+                if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
+                    online.Add(new(conf, "hydraflix", "HydraFlix", " (ENG)"));
             }
-
-            return online;
         }
 
-        public void Loaded(InitspaceModel baseconf)
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        /// <summary>
+        /// https://www.hydraflix.vip
+        /// </summary>
+        conf = ModuleInvoke.Init("Hydraflix", new OnlinesSettings("Hydraflix", "https://vidfast.pro")
         {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+            displayindex = 1000,
+            streamproxy = true,
+            priorityBrowser = "firefox"
+        });
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            /// <summary>
-            /// https://www.hydraflix.vip
-            /// </summary>
-            conf = ModuleInvoke.Init("Hydraflix", new OnlinesSettings("Hydraflix", "https://vidfast.pro")
-            {
-                displayindex = 1000,
-                streamproxy = true,
-                priorityBrowser = "firefox"
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "hydraflix" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "hydraflix" ? " ~ 1080p" : null;
     }
 }

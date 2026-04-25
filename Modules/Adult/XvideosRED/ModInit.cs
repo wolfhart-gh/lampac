@@ -7,38 +7,37 @@ using Shared.Models.SISI.Base;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace XvideosRED
+namespace XvideosRED;
+
+public class ModInit : IModuleLoaded, IModuleSisi
 {
-    public class ModInit : IModuleLoaded, IModuleSisi
+    public static SisiSettings conf;
+
+    public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
     {
-        public static SisiSettings conf;
-
-        public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
+        return new List<SisiModuleItem>()
         {
-            return new List<SisiModuleItem>()
-            {
-                new("xvideos.red", conf, "xdsred")
-            };
-        }
+            new("xvideos.red", conf, "xdsred")
+        };
+    }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
 
-        void updateConf()
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("XvideosRED", new SisiSettings("XvideosRED", "https://www.xvideos.red")
         {
-            conf = ModuleInvoke.Init("XvideosRED", new SisiSettings("XvideosRED", "https://www.xvideos.red")
-            {
-                enable = false,
-                displayindex = 20
-            });
-        }
+            enable = false,
+            displayindex = 20
+        });
     }
 }

@@ -1,9 +1,8 @@
-﻿namespace Shared.Models.Base
-{
-    public interface Igroup
-    {
-        public int group { get; set; }
+﻿namespace Shared.Models.Base;
 
-        public bool group_hide { get; set; }
-    }
+public interface Igroup
+{
+    public int group { get; set; }
+
+    public bool group_hide { get; set; }
 }

@@ -1,9 +1,8 @@
-﻿namespace SISI.Models
-{
-    public class BookmarksConf
-    {
-        public bool saveimage { get; set; }
+﻿namespace SISI;
 
-        public bool savepreview { get; set; }
-    }
+public class BookmarksConf
+{
+    public bool saveimage { get; set; }
+
+    public bool savepreview { get; set; }
 }

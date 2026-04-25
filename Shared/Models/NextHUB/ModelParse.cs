@@ -1,9 +1,8 @@
-﻿namespace Shared.Models.SISI.NextHUB
-{
-    public class ModelParse
-    {
-        public SingleNodeSettings name { get; set; }
+﻿namespace Shared.Models.SISI.NextHUB;
 
-        public SingleNodeSettings href { get; set; }
-    }
+public class ModelParse
+{
+    public SingleNodeSettings name { get; set; }
+
+    public SingleNodeSettings href { get; set; }
 }

@@ -4,10 +4,10 @@
 
     if (path.endsWith("/video")) {
         const uri = decryptQuery(query.uri);
-        return await Video(uri);
+        return Video(uri);
     }
 
-    return await Playlist(
+    return Playlist(
         query.search || "",
         query.model || "",
         query.sort || "",

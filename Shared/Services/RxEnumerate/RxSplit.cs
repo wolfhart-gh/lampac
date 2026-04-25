@@ -1,41 +1,40 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace Shared.Services.RxEnumerate
+namespace Shared.Services.RxEnumerate;
+
+public ref struct RxSplit
 {
-    public ref struct RxSplit
+    private readonly ReadOnlySpan<char> _html;
+    private readonly List<Range> _ranges = new List<Range>(100);
+    private readonly string _pattern;
+
+    public RxSplit(string pattern, ReadOnlySpan<char> html, int skip, RegexOptions options = RegexOptions.CultureInvariant)
     {
-        private readonly ReadOnlySpan<char> _html;
-        private readonly List<Range> _ranges = new List<Range>(100);
-        private readonly string _pattern;
+        _html = html;
+        _pattern = pattern;
+        int i = 0;
 
-        public RxSplit(string pattern, ReadOnlySpan<char> html, int skip, RegexOptions options = RegexOptions.CultureInvariant)
+        foreach (Range r in Regex.EnumerateSplits(html, pattern, options))
         {
-            _html = html;
-            _pattern = pattern;
-            int i = 0;
+            if (i++ < skip)
+                continue;
 
-            foreach (Range r in Regex.EnumerateSplits(html, pattern, options))
-            {
-                if (i++ < skip)
-                    continue;
-
-                _ranges.Add(r);
-            }
+            _ranges.Add(r);
         }
+    }
 
-        public int Count => _ranges.Count;
+    public int Count => _ranges.Count;
 
-        public RowEnumerable Rows() => new RowEnumerable(_html, _ranges, _pattern);
+    public RowEnumerable Rows() => new RowEnumerable(_html, _ranges, _pattern);
 
-        public RxRow this[int index]
+    public RxRow this[int index]
+    {
+        get
         {
-            get
-            {
-                if ((uint)index >= (uint)_ranges.Count)
-                    return new RxRow();
+            if ((uint)index >= (uint)_ranges.Count)
+                return new RxRow();
 
-                return new RxRow(_html, _ranges[index], _pattern);
-            }
+            return new RxRow(_html, _ranges[index], _pattern);
         }
     }
 }

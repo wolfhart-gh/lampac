@@ -11,202 +11,201 @@ using Shared;
 using Shared.Models.Templates;
 using Shared.Services;
 
-namespace CDNvideohub
+namespace CDNvideohub;
+
+public class CDNvideohubController : BaseOnlineController
 {
-    public class CDNvideohubController : BaseOnlineController
+    static readonly HttpClient http2Client = FriendlyHttp.CreateHttp2Client();
+
+    public CDNvideohubController() : base(ModInit.conf)
     {
-        static readonly HttpClient http2Client = FriendlyHttp.CreateHttp2Client();
-
-        public CDNvideohubController() : base(ModInit.conf)
+        requestInitialization += () =>
         {
-            requestInitialization += () =>
-            {
-                if (init.httpversion == 2)
-                    httpHydra.RegisterHttp(http2Client);
-            };
-        }
+            if (init.httpversion == 2)
+                httpHydra.RegisterHttp(http2Client);
+        };
+    }
 
-        [HttpGet]
-        [Staticache]
-        [Route("lite/cdnvideohub")]
-        async public Task<ActionResult> Index(string title, string original_title, long kinopoisk_id, string t, int s = -1, bool rjson = false)
+    [HttpGet]
+    [Staticache]
+    [Route("lite/cdnvideohub")]
+    async public Task<ActionResult> Index(string title, string original_title, long kinopoisk_id, string t, int s = -1, bool rjson = false)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult<RootObject>($"cdnvideohub:view:{kinopoisk_id}", TimeSpan.FromHours(4), async e =>
         {
-            if (await IsRequestBlocked(rch: true))
-                return badInitMsg;
+            var root = await httpHydra.Get<RootObject>($"{init.host}/api/v1/player/sv/playlist?pub=12&aggr=kp&id={kinopoisk_id}");
 
-            rhubFallback:
-            var cache = await InvokeCacheResult<RootObject>($"cdnvideohub:view:{kinopoisk_id}", TimeSpan.FromHours(4), async e =>
+            if (root?.items == null)
+                return e.Fail("root", refresh_proxy: true);
+
+            if (root.items.Length == 0)
+                return e.Fail("video");
+
+            return e.Success(root);
+        });
+
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
+
+        return ContentTpl(cache, () =>
+        {
+            if (cache.Value.isSerial)
             {
-                var root = await httpHydra.Get<RootObject>($"{init.host}/api/v1/player/sv/playlist?pub=12&aggr=kp&id={kinopoisk_id}");
+                #region Сериал
+                string defaultargs = $"&rjson={rjson}&kinopoisk_id={kinopoisk_id}&title={HttpUtility.UrlEncode(title)}&original_title={HttpUtility.UrlEncode(original_title)}";
 
-                if (root?.items == null)
-                    return e.Fail("root", refresh_proxy: true);
-
-                if (root.items.Length == 0)
-                    return e.Fail("video");
-
-                return e.Success(root);
-            });
-
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
-
-            return ContentTpl(cache, () =>
-            {
-                if (cache.Value.isSerial)
+                if (s == -1)
                 {
-                    #region Сериал
-                    string defaultargs = $"&rjson={rjson}&kinopoisk_id={kinopoisk_id}&title={HttpUtility.UrlEncode(title)}&original_title={HttpUtility.UrlEncode(original_title)}";
+                    #region Сезоны
+                    var tpl = new SeasonTpl();
+                    var hash = new HashSet<int>();
 
-                    if (s == -1)
+                    foreach (var video in cache.Value.items.OrderBy(i => i.season))
                     {
-                        #region Сезоны
-                        var tpl = new SeasonTpl();
-                        var hash = new HashSet<int>();
+                        int season = video.season;
 
-                        foreach (var video in cache.Value.items.OrderBy(i => i.season))
-                        {
-                            int season = video.season;
+                        if (hash.Contains(season))
+                            continue;
 
-                            if (hash.Contains(season))
-                                continue;
-
-                            hash.Add(season);
-                            tpl.Append($"{season} сезон", $"{host}/lite/cdnvideohub?s={season}{defaultargs}", season);
-                        }
-
-                        return tpl;
-                        #endregion
+                        hash.Add(season);
+                        tpl.Append($"{season} сезон", $"{host}/lite/cdnvideohub?s={season}{defaultargs}", season);
                     }
-                    else
-                    {
-                        #region Перевод
-                        var vtpl = new VoiceTpl();
-                        var tmpVoice = new HashSet<string>();
 
-                        foreach (var video in cache.Value.items)
-                        {
-                            if (video.season != s)
-                                continue;
-
-                            string voice_studio = video.voiceStudio;
-                            if (string.IsNullOrEmpty(voice_studio) || tmpVoice.Contains(voice_studio))
-                                continue;
-
-                            tmpVoice.Add(voice_studio);
-
-                            if (string.IsNullOrEmpty(t))
-                                t = voice_studio;
-
-                            vtpl.Append(voice_studio, t == voice_studio, $"{host}/lite/cdnvideohub?s={s}&t={HttpUtility.UrlEncode(voice_studio)}{defaultargs}");
-                        }
-                        #endregion
-
-                        var etpl = new EpisodeTpl(vtpl);
-                        var tmpEpisode = new HashSet<int>();
-
-                        foreach (var video in cache.Value.items.OrderBy(i => i.episode))
-                        {
-                            if (video.season != s || video.voiceStudio != t)
-                                continue;
-
-                            string vkId = video.vkId;
-                            if (string.IsNullOrEmpty(vkId))
-                                continue;
-
-                            int episode = video.episode;
-
-                            if (tmpEpisode.Contains(episode))
-                                continue;
-
-                            tmpEpisode.Add(episode);
-
-                            string link = accsArgs($"{host}/lite/cdnvideohub/video.m3u8?vkId={vkId}&title={HttpUtility.UrlEncode(title)}");
-
-                            etpl.Append($"{episode} серия", title ?? original_title, s.ToString(), episode.ToString(), link, "call", streamlink: $"{link}&play=true", vast: init.vast);
-                        }
-
-                        return etpl;
-                    }
+                    return tpl;
                     #endregion
                 }
                 else
                 {
-                    #region Фильм
-                    var mtpl = new MovieTpl(title, original_title);
+                    #region Перевод
+                    var vtpl = new VoiceTpl();
+                    var tmpVoice = new HashSet<string>();
 
                     foreach (var video in cache.Value.items)
                     {
-                        string voice = video.voiceStudio ?? video.voiceType;
+                        if (video.season != s)
+                            continue;
+
+                        string voice_studio = video.voiceStudio;
+                        if (string.IsNullOrEmpty(voice_studio) || tmpVoice.Contains(voice_studio))
+                            continue;
+
+                        tmpVoice.Add(voice_studio);
+
+                        if (string.IsNullOrEmpty(t))
+                            t = voice_studio;
+
+                        vtpl.Append(voice_studio, t == voice_studio, $"{host}/lite/cdnvideohub?s={s}&t={HttpUtility.UrlEncode(voice_studio)}{defaultargs}");
+                    }
+                    #endregion
+
+                    var etpl = new EpisodeTpl(vtpl);
+                    var tmpEpisode = new HashSet<int>();
+
+                    foreach (var video in cache.Value.items.OrderBy(i => i.episode))
+                    {
+                        if (video.season != s || video.voiceStudio != t)
+                            continue;
+
                         string vkId = video.vkId;
+                        if (string.IsNullOrEmpty(vkId))
+                            continue;
+
+                        int episode = video.episode;
+
+                        if (tmpEpisode.Contains(episode))
+                            continue;
+
+                        tmpEpisode.Add(episode);
 
                         string link = accsArgs($"{host}/lite/cdnvideohub/video.m3u8?vkId={vkId}&title={HttpUtility.UrlEncode(title)}");
 
-                        mtpl.Append(voice, link, "call", vast: init.vast);
+                        etpl.Append($"{episode} серия", title ?? original_title, s.ToString(), episode.ToString(), link, "call", streamlink: $"{link}&play=true", vast: init.vast);
                     }
 
-                    return mtpl;
-                    #endregion
+                    return etpl;
                 }
-            });
-        }
-
-
-        #region Video
-        [HttpGet]
-        [Route("lite/cdnvideohub/video.m3u8")]
-        async public Task<ActionResult> Video(string vkId, string title, bool play)
-        {
-            if (await IsRequestBlocked(rch: true, rch_check: false))
-                return badInitMsg;
-
-            if (rch != null)
+                #endregion
+            }
+            else
             {
-                if (rch.IsNotConnected())
+                #region Фильм
+                var mtpl = new MovieTpl(title, original_title);
+
+                foreach (var video in cache.Value.items)
                 {
-                    if (init.rhub_fallback && play)
-                        rch.Disabled();
-                    else
-                        return ContentTo(rch.connectionMsg);
+                    string voice = video.voiceStudio ?? video.voiceType;
+                    string vkId = video.vkId;
+
+                    string link = accsArgs($"{host}/lite/cdnvideohub/video.m3u8?vkId={vkId}&title={HttpUtility.UrlEncode(title)}");
+
+                    mtpl.Append(voice, link, "call", vast: init.vast);
                 }
 
-                if (!play && rch.IsRequiredConnected())
-                    return ContentTo(rch.connectionMsg);
+                return mtpl;
+                #endregion
+            }
+        });
+    }
 
-                if (rch.IsNotSupport(out string rch_error))
-                    return ShowError(rch_error);
+
+    #region Video
+    [HttpGet]
+    [Route("lite/cdnvideohub/video.m3u8")]
+    async public Task<ActionResult> Video(string vkId, string title, bool play)
+    {
+        if (await IsRequestBlocked(rch: true, rch_check: false))
+            return badInitMsg;
+
+        if (rch != null)
+        {
+            if (rch.IsNotConnected())
+            {
+                if (init.rhub_fallback && play)
+                    rch.Disabled();
+                else
+                    return ContentTo(rch.connectionMsg);
             }
 
-        rhubFallback:
+            if (!play && rch.IsRequiredConnected())
+                return ContentTo(rch.connectionMsg);
 
-            var cache = await InvokeCacheResult<string>(ipkey($"cdnvideohub:video:{vkId}"), 20, async e =>
+            if (rch.IsNotSupport(out string rch_error))
+                return ShowError(rch_error);
+        }
+
+    rhubFallback:
+
+        var cache = await InvokeCacheResult<string>(ipkey($"cdnvideohub:video:{vkId}"), 20, async e =>
+        {
+            string hls = null;
+
+            await httpHydra.GetSpan($"{init.host}/api/v1/player/sv/video/{vkId}", iframe =>
             {
-                string hls = null;
-
-                await httpHydra.GetSpan($"{init.host}/api/v1/player/sv/video/{vkId}", iframe =>
-                {
-                    hls = Rx.Slice(iframe, "\"hlsUrl\":\"", "\"").ToString();
-                });
-
-                if (string.IsNullOrEmpty(hls))
-                    return e.Fail("hls", refresh_proxy: true);
-
-                return e.Success(hls.Replace("u0026", "&").Replace("\\", ""));
+                hls = Rx.Slice(iframe, "\"hlsUrl\":\"", "\"").ToString();
             });
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
+            if (string.IsNullOrEmpty(hls))
+                return e.Fail("hls", refresh_proxy: true);
 
-            if (!cache.IsSuccess)
-                return OnError(cache.ErrorMsg);
+            return e.Success(hls.Replace("u0026", "&").Replace("\\", ""));
+        });
 
-            string link = HostStreamProxy(cache.Value);
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
 
-            if (play)
-                return RedirectToPlay(link);
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
 
-            return ContentTo(VideoTpl.ToJson("play", link, title, vast: init.vast));
-        }
-        #endregion
+        string link = HostStreamProxy(cache.Value);
+
+        if (play)
+            return RedirectToPlay(link);
+
+        return ContentTo(VideoTpl.ToJson("play", link, title, vast: init.vast));
     }
+    #endregion
 }

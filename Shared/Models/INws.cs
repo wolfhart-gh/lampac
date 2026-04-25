@@ -2,104 +2,103 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading;
 
-namespace Shared.Models
-{
-    public interface INws
-    {
-        ConcurrentDictionary<string, NwsConnection> AllConnections();
+namespace Shared.Models;
 
-        Task SendAsync(string connectionId, string method, params object[] args);
+public interface INws
+{
+    ConcurrentDictionary<string, NwsConnection> AllConnections();
+
+    Task SendAsync(string connectionId, string method, params object[] args);
+}
+
+public class NwsConnection : IDisposable
+{
+    public NwsConnection(string connectionId, WebSocket socket, string host, RequestModel requestInfo)
+    {
+        ConnectionId = connectionId;
+        Socket = socket;
+        Host = host;
+        RequestInfo = requestInfo;
+        SendLock = new SemaphoreSlim(1, 1);
+        UpdateActivity();
     }
 
-    public class NwsConnection : IDisposable
+    public string ConnectionId { get; }
+
+    public WebSocket Socket { get; }
+
+    public string Host { get; }
+
+    public string Ip => RequestInfo.IP;
+
+    public RequestModel RequestInfo { get; }
+
+    public SemaphoreSlim SendLock { get; }
+
+    #region LastActivityUtc
+    long _lastActivityTicks;
+
+    public DateTime LastActivityUtc
     {
-        public NwsConnection(string connectionId, WebSocket socket, string host, RequestModel requestInfo)
+        get
         {
-            ConnectionId = connectionId;
-            Socket = socket;
-            Host = host;
-            RequestInfo = requestInfo;
-            SendLock = new SemaphoreSlim(1, 1);
-            UpdateActivity();
+            long ticks = Interlocked.Read(ref _lastActivityTicks);
+            return new DateTime(ticks, DateTimeKind.Utc);
         }
+    }
 
-        public string ConnectionId { get; }
+    public void UpdateActivity()
+    {
+        Interlocked.Exchange(ref _lastActivityTicks, DateTime.UtcNow.Ticks);
+    }
+    #endregion
 
-        public WebSocket Socket { get; }
+    #region LastSendActivityUtc
+    long _lastSendActivityTicks;
 
-        public string Host { get; }
-
-        public string Ip => RequestInfo.IP;
-
-        public RequestModel RequestInfo { get; }
-
-        public SemaphoreSlim SendLock { get; }
-
-        #region LastActivityUtc
-        long _lastActivityTicks;
-
-        public DateTime LastActivityUtc
+    public DateTime LastSendActivityUtc
+    {
+        get
         {
-            get
-            {
-                long ticks = Interlocked.Read(ref _lastActivityTicks);
-                return new DateTime(ticks, DateTimeKind.Utc);
-            }
+            long ticks = Interlocked.Read(ref _lastSendActivityTicks);
+            return new DateTime(ticks, DateTimeKind.Utc);
         }
+    }
 
-        public void UpdateActivity()
+    public void UpdateSendActivity()
+    {
+        Interlocked.Exchange(ref _lastSendActivityTicks, DateTime.UtcNow.Ticks);
+    }
+    #endregion
+
+
+    public bool SendCancel = true;
+    CancellationTokenSource _cancellationSource;
+
+    public void SetCancellationSource(CancellationTokenSource source)
+    {
+        var previous = Interlocked.Exchange(ref _cancellationSource, source);
+        previous?.Dispose();
+    }
+
+    public void Cancel()
+    {
+        try
         {
-            Interlocked.Exchange(ref _lastActivityTicks, DateTime.UtcNow.Ticks);
+            var source = Interlocked.CompareExchange(ref _cancellationSource, null, null);
+            if (source == null)
+                return;
+
+            source.Cancel();
         }
-        #endregion
-
-        #region LastSendActivityUtc
-        long _lastSendActivityTicks;
-
-        public DateTime LastSendActivityUtc
+        catch (ObjectDisposedException)
         {
-            get
-            {
-                long ticks = Interlocked.Read(ref _lastSendActivityTicks);
-                return new DateTime(ticks, DateTimeKind.Utc);
-            }
         }
+    }
 
-        public void UpdateSendActivity()
-        {
-            Interlocked.Exchange(ref _lastSendActivityTicks, DateTime.UtcNow.Ticks);
-        }
-        #endregion
-
-
-        public bool SendCancel = true;
-        CancellationTokenSource _cancellationSource;
-
-        public void SetCancellationSource(CancellationTokenSource source)
-        {
-            var previous = Interlocked.Exchange(ref _cancellationSource, source);
-            previous?.Dispose();
-        }
-
-        public void Cancel()
-        {
-            try
-            {
-                var source = Interlocked.CompareExchange(ref _cancellationSource, null, null);
-                if (source == null)
-                    return;
-
-                source.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-        }
-
-        public void Dispose()
-        {
-            SendLock.Dispose();
-            Interlocked.Exchange(ref _cancellationSource, null)?.Dispose();
-        }
+    public void Dispose()
+    {
+        SendLock.Dispose();
+        Interlocked.Exchange(ref _cancellationSource, null)?.Dispose();
     }
 }

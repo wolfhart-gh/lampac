@@ -10,7 +10,7 @@ namespace JacRed.Engine
         #region FileDB
         /// <summary>
         /// $"{search_name}:{search_originalname}"
-        /// Верхнее время изменения 
+        /// Верхнее время изменения
         /// </summary>
         public static ConcurrentDictionary<string, DateTime> masterDb = new ConcurrentDictionary<string, DateTime>();
 

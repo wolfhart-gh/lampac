@@ -8,61 +8,60 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using Shared;
 
-namespace AniLibria
+namespace AniLibria;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf, "anilibria", "Anilibria")
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf, "anilibria", "Anilibria")
-            };
-        }
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+        return new List<ModuleOnlineSpiderItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf, "anilibria")
+        };
+    }
 
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf, "anilibria")
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("anilibria");
 
-        public void Loaded(InitspaceModel baseconf)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("AniLibria", new OnlinesSettings("AnilibriaOnline", "https://api.anilibria.tv")
         {
-            CoreInit.conf.online.with_search.Add("anilibria");
+            enable = false,
+            displayindex = 105
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("AniLibria", new OnlinesSettings("AnilibriaOnline", "https://api.anilibria.tv")
-            {
-                enable = false,
-                displayindex = 105
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "anilibria" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "anilibria" ? " ~ 1080p" : null;
     }
 }

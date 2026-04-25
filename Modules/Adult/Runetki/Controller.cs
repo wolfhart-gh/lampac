@@ -6,65 +6,64 @@ using Shared.PlaywrightCore;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Runetki
+namespace Runetki;
+
+public class RunetkiController : BaseSisiController
 {
-    public class RunetkiController : BaseSisiController
+    public RunetkiController() : base(ModInit.conf) { }
+
+    [HttpGet]
+    [Staticache]
+    [Route("runetki")]
+    async public Task<ActionResult> Index(string search, string sort, int pg = 1)
     {
-        public RunetkiController() : base(ModInit.conf) { }
+        if (!string.IsNullOrEmpty(search))
+            return OnError("no search", false);
 
-        [HttpGet]
-        [Staticache]
-        [Route("runetki")]
-        async public Task<ActionResult> Index(string search, string sort, int pg = 1)
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>($"{init.plugin}:list:{sort}:{pg}", 5, async e =>
         {
-            if (!string.IsNullOrEmpty(search))
-                return OnError("no search", false);
+            string url = RunetkiTo.Uri(init.host, sort, pg);
 
-            if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-                return badInitMsg;
+            int total_pages = 1;
+            List<PlaylistItem> playlists = null;
 
-            rhubFallback:
-            var cache = await InvokeCacheResult<(List<PlaylistItem> playlists, int total_pages)>($"{init.plugin}:list:{sort}:{pg}", 5, async e =>
+            if (rch?.enable == true || init.priorityBrowser == "http")
             {
-                string url = RunetkiTo.Uri(init.host, sort, pg);
-
-                int total_pages = 1;
-                List<PlaylistItem> playlists = null;
-
-                if (rch?.enable == true || init.priorityBrowser == "http")
+                await httpHydra.GetSpan(url, span =>
                 {
-                    await httpHydra.GetSpan(url, span =>
-                    {
-                        playlists = RunetkiTo.Playlist(span, out total_pages);
-                    });
-                }
-                else
-                {
-                    var headers = httpHeaders(init);
+                    playlists = RunetkiTo.Playlist(span, out total_pages);
+                });
+            }
+            else
+            {
+                var headers = httpHeaders(init);
 
-                    string html = await PlaywrightBrowser.Get(init, init.cors(url, headers, requestInfo), headers, proxy_data);
+                string html = await PlaywrightBrowser.Get(init, init.cors(url, headers, requestInfo), headers, proxy_data);
 
-                    playlists = RunetkiTo.Playlist(html, out total_pages);
-                }
+                playlists = RunetkiTo.Playlist(html, out total_pages);
+            }
 
-                if (playlists == null || playlists.Count == 0)
-                    return e.Fail("playlists", refresh_proxy: true);
+            if (playlists == null || playlists.Count == 0)
+                return e.Fail("playlists", refresh_proxy: true);
 
-                return e.Success((playlists, total_pages));
-            });
+            return e.Success((playlists, total_pages));
+        });
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
 
-            if (!cache.IsSuccess)
-                return OnError(cache.ErrorMsg);
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
 
-            return PlaylistResult(
-                cache.Value.playlists,
-                cache.ISingleCache,
-                RunetkiTo.Menu(host, sort),
-                total_pages: cache.Value.total_pages
-            );
-        }
+        return PlaylistResult(
+            cache.Value.playlists,
+            cache.ISingleCache,
+            RunetkiTo.Menu(host, sort),
+            total_pages: cache.Value.total_pages
+        );
     }
 }

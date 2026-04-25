@@ -1,49 +1,48 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace Shared.Services.RxEnumerate
+namespace Shared.Services.RxEnumerate;
+
+public readonly ref struct RowEnumerable
 {
-    public readonly ref struct RowEnumerable
+    private readonly ReadOnlySpan<char> _html;
+    private readonly ReadOnlySpan<Range> _ranges;
+    private readonly string _pattern;
+
+    public RowEnumerable(ReadOnlySpan<char> html, List<Range> ranges, string pattern)
     {
-        private readonly ReadOnlySpan<char> _html;
-        private readonly ReadOnlySpan<Range> _ranges;
-        private readonly string _pattern;
-
-        public RowEnumerable(ReadOnlySpan<char> html, List<Range> ranges, string pattern)
-        {
-            _html = html;
-            _ranges = CollectionsMarshal.AsSpan(ranges);
-            _pattern = pattern;
-        }
-
-        public RowEnumerator GetEnumerator() => new RowEnumerator(_html, _ranges, _pattern);
+        _html = html;
+        _ranges = CollectionsMarshal.AsSpan(ranges);
+        _pattern = pattern;
     }
 
-    public ref struct RowEnumerator
+    public RowEnumerator GetEnumerator() => new RowEnumerator(_html, _ranges, _pattern);
+}
+
+public ref struct RowEnumerator
+{
+    private readonly ReadOnlySpan<char> _html;
+    private readonly ReadOnlySpan<Range> _ranges;
+    private int _index;
+    private readonly string _pattern;
+    public RxRow Current { get; private set; }
+
+    public RowEnumerator(ReadOnlySpan<char> html, ReadOnlySpan<Range> ranges, string pattern)
     {
-        private readonly ReadOnlySpan<char> _html;
-        private readonly ReadOnlySpan<Range> _ranges;
-        private int _index;
-        private readonly string _pattern;
-        public RxRow Current { get; private set; }
+        _html = html;
+        _ranges = ranges;
+        _pattern = pattern;
+        _index = -1;
+        Current = default;
+    }
 
-        public RowEnumerator(ReadOnlySpan<char> html, ReadOnlySpan<Range> ranges, string pattern)
-        {
-            _html = html;
-            _ranges = ranges;
-            _pattern = pattern;
-            _index = -1;
-            Current = default;
-        }
+    public bool MoveNext()
+    {
+        _index++;
+        if (_index >= _ranges.Length)
+            return false;
 
-        public bool MoveNext()
-        {
-            _index++;
-            if (_index >= _ranges.Length)
-                return false;
-
-            Range r = _ranges[_index];
-            Current = new RxRow(_html, r, _pattern);
-            return true;
-        }
+        Range r = _ranges[_index];
+        Current = new RxRow(_html, r, _pattern);
+        return true;
     }
 }

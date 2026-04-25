@@ -9,64 +9,62 @@ using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace ZetflixDB
+namespace ZetflixDB;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if (args.kinopoisk_id > 0 && (conf.rhub || conf.priorityBrowser == "http" || PlaywrightBrowser.Status != PlaywrightStatus.disabled))
+            online.Add(new(conf));
+
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.UpdateCurrentConf += updateCurrentConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.UpdateCurrentConf -= updateCurrentConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("ZetflixDB", new OnlinesSettings("ZetflixDB", "", "https://54243ba5.obrut.show")
         {
-            var online = new List<ModuleOnlineItem>();
+            displayindex = 515
+        });
+    }
 
-            if (args.kinopoisk_id > 0 && (conf.rhub || conf.priorityBrowser == "http" || PlaywrightBrowser.Status != PlaywrightStatus.disabled))
-                online.Add(new(conf));
-
-            return online;
-        }
-
-        public void Loaded(InitspaceModel baseconf)
+    void updateCurrentConf()
+    {
+        if (CoreInit.CurrentConf.TryGetValue("VideoDB", out var videoDBConf))
         {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.UpdateCurrentConf += updateCurrentConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+            var _conf = videoDBConf.ToObject<OnlinesSettings>();
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.UpdateCurrentConf -= updateCurrentConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("ZetflixDB", new OnlinesSettings("ZetflixDB", "", "https://54243ba5.obrut.show")
+            if (_conf != null)
             {
-                displayindex = 515
-            });
-        }
-
-        void updateCurrentConf()
-        {
-            if (CoreInit.CurrentConf.TryGetValue("VideoDB", out var videoDBConf))
-            {
-                var _conf = videoDBConf.ToObject<OnlinesSettings>();
-
-                if (_conf != null)
-                {
-                    conf.rch_access = _conf.rch_access;
-                    conf.stream_access = _conf.stream_access;
-                    conf.priorityBrowser = _conf.priorityBrowser;
-                }
-                ;
+                conf.rch_access = _conf.rch_access;
+                conf.stream_access = _conf.stream_access;
+                conf.priorityBrowser = _conf.priorityBrowser;
             }
         }
+    }
 
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "zetflixdb" ? " ~ 2160p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "zetflixdb" ? " ~ 2160p" : null;
     }
 }

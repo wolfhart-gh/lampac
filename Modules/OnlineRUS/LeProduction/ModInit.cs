@@ -7,49 +7,48 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace LeProduction
+namespace LeProduction;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if (!args.isanime)
+            online.Add(new(conf));
+
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("LeProduction", new OnlinesSettings("LeProduction", "https://www.le-production.tv")
         {
-            var online = new List<ModuleOnlineItem>();
+            displayindex = 545,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors",
+            rchstreamproxy = "web"
+        });
+    }
 
-            if (!args.isanime)
-                online.Add(new(conf));
-
-            return online;
-        }
-
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("LeProduction", new OnlinesSettings("LeProduction", "https://www.le-production.tv")
-            {
-                displayindex = 545,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors",
-                rchstreamproxy = "web"
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "leproduction" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "leproduction" ? " ~ 1080p" : null;
     }
 }

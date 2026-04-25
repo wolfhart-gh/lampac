@@ -7,51 +7,50 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace AsiaGe
+namespace AsiaGe;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if (args.serial == 1)
         {
-            var online = new List<ModuleOnlineItem>();
-
-            if (args.serial == 1)
-            {
-                if (args.original_language != null && args.original_language.Split("|")[0] is "ko" or "cn")
-                    online.Add(new(conf, arg_title: " (Грузинский)"));
-            }
-
-            return online;
+            if (args.original_language != null && args.original_language.Split("|")[0] is "ko" or "cn")
+                online.Add(new(conf, arg_title: " (Грузинский)"));
         }
 
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+        return online;
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
 
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("AsiaGe", new OnlinesSettings("AsiaGe", "https://asia.com.ge")
-            {
-                displayindex = 910,
-                rch_access = "apk,cors",
-                stream_access = "apk,web,cors"
-            });
-        }
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
 
-        string onlineApiQuality(EventOnlineApiQuality e)
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("AsiaGe", new OnlinesSettings("AsiaGe", "https://asia.com.ge")
         {
-            return e.balanser == "asiage" ? " ~ 1080p" : null;
-        }
+            displayindex = 910,
+            rch_access = "apk,cors",
+            stream_access = "apk,web,cors"
+        });
+    }
+
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "asiage" ? " ~ 1080p" : null;
     }
 }

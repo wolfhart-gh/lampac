@@ -4,37 +4,36 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Lamson
+namespace Lamson;
+
+public class ModInit : IModuleLoaded
 {
-    public class ModInit : IModuleLoaded
+    public void Loaded(InitspaceModel conf)
     {
-        public void Loaded(InitspaceModel conf)
+        ThreadPool.QueueUserWorkItem(async _ =>
         {
-            ThreadPool.QueueUserWorkItem(async _ =>
+            while (true)
             {
-                while (true)
-                {
-                    // асинхронные задачи
-                    await Task.Delay(1000);
-                }
-            });
-
-
-            var timer = new System.Timers.Timer(TimeSpan.FromMinutes(1).TotalMilliseconds)
-            {
-                AutoReset = true,
-                Enabled = true
-            };
-
-            timer.Elapsed += async (s, e) =>
-            {
-                // cron
+                // асинхронные задачи
                 await Task.Delay(1000);
-            };
-        }
+            }
+        });
 
-        public void Dispose()
+
+        var timer = new System.Timers.Timer(TimeSpan.FromMinutes(1).TotalMilliseconds)
         {
-        }
+            AutoReset = true,
+            Enabled = true
+        };
+
+        timer.Elapsed += async (s, e) =>
+        {
+            // cron
+            await Task.Delay(1000);
+        };
+    }
+
+    public void Dispose()
+    {
     }
 }

@@ -7,45 +7,44 @@ using Shared.Models.Module.Interfaces;
 using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace TimeCode
+namespace TimeCode;
+
+public class ModInit : IModuleLoaded, IModuleConfigure
 {
-    public class ModInit : IModuleLoaded, IModuleConfigure
+    public static string modpath;
+    public static ModuleBaseConf conf;
+
+    public void Configure(ConfigureModel app)
     {
-        public static string modpath;
-        public static ModuleBaseConf conf;
+        app.services.AddDbContextFactory<SqlContext>(SqlContext.ConfiguringDbBuilder);
+    }
 
-        public void Configure(ConfigureModel app)
+    public void Loaded(InitspaceModel baseconf)
+    {
+        modpath = baseconf.path;
+
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+
+        foreach (var m in conf.limit_map)
+            CoreInit.conf.WAF.limit_map.Insert(0, m);
+
+        SqlContext.Initialization(baseconf.app.ApplicationServices);
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("TimeCode", new ModuleBaseConf()
         {
-            app.services.AddDbContextFactory<SqlContext>(SqlContext.ConfiguringDbBuilder);
-        }
-
-        public void Loaded(InitspaceModel baseconf)
-        {
-            modpath = baseconf.path;
-
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-
-            foreach (var m in conf.limit_map)
-                CoreInit.conf.WAF.limit_map.Insert(0, m);
-
-            SqlContext.Initialization(baseconf.app.ApplicationServices);
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("TimeCode", new ModuleBaseConf()
+            limit_map = new List<WafLimitRootMap>()
             {
-                limit_map = new List<WafLimitRootMap>()
-                {
-                    new("^/timecode/", new WafLimitMap { limit = 10, second = 1 })
-                }
-            });
-        }
+                new("^/timecode/", new WafLimitMap { limit = 10, second = 1 })
+            }
+        });
     }
 }

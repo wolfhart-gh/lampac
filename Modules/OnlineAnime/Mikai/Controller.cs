@@ -10,176 +10,175 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace Mikai
+namespace Mikai;
+
+public class MikaiController : BaseOnlineController
 {
-    public class MikaiController : BaseOnlineController
+    public MikaiController() : base(ModInit.conf) { }
+
+    [HttpGet]
+    [Staticache]
+    [Route("lite/mikai")]
+    async public Task<ActionResult> Index(string title, string original_title, int year, int animeid = 0, int t = -1, bool rjson = false)
     {
-        public MikaiController() : base(ModInit.conf) { }
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
 
-        [HttpGet]
-        [Staticache]
-        [Route("lite/mikai")]
-        async public Task<ActionResult> Index(string title, string original_title, int year, int animeid = 0, int t = -1, bool rjson = false)
+        string enc_title = HttpUtility.UrlEncode(title);
+        string enc_original_title = HttpUtility.UrlEncode(original_title);
+
+        #region search
+        if (animeid == 0)
         {
-            if (await IsRequestBlocked(rch: true))
-                return badInitMsg;
+            if (string.IsNullOrWhiteSpace(title))
+                return OnError();
 
-            string enc_title = HttpUtility.UrlEncode(title);
-            string enc_original_title = HttpUtility.UrlEncode(original_title);
-
-            #region search
-            if (animeid == 0)
+        rhubFallbackSearch:
+            var search = await InvokeCacheResult<List<(int id, string title, string year, string poster)>>($"mikai:search:{title}", TimeSpan.FromHours(4), async e =>
             {
-                if (string.IsNullOrWhiteSpace(title))
-                    return OnError();
+                var root = await httpHydra.Get<SearchResponse>($"{init.host}/v1/anime/search?page=1&limit=24&sort=year&order=desc&name={HttpUtility.UrlEncode(title)}");
+                var items = root?.result;
+                if (items == null || items.Length == 0)
+                    return e.Fail("search", refresh_proxy: true);
 
-                rhubFallbackSearch:
-                var search = await InvokeCacheResult<List<(int id, string title, string year, string poster)>>($"mikai:search:{title}", TimeSpan.FromHours(4), async e =>
+                var list = new List<(int id, string title, string year, string poster)>();
+
+                foreach (var item in items)
                 {
-                    var root = await httpHydra.Get<SearchResponse>($"{init.host}/v1/anime/search?page=1&limit=24&sort=year&order=desc&name={HttpUtility.UrlEncode(title)}");
-                    var items = root?.result;
-                    if (items == null || items.Length == 0)
-                        return e.Fail("search", refresh_proxy: true);
+                    if (item?.id == 0)
+                        continue;
 
-                    var list = new List<(int id, string title, string year, string poster)>();
+                    string itemTitle = item?.details?.names?.name ?? item?.details?.names?.nameEnglish ?? item?.details?.names?.nameNative ?? item?.slug;
+                    if (string.IsNullOrWhiteSpace(itemTitle))
+                        continue;
 
-                    foreach (var item in items)
-                    {
-                        if (item?.id == 0)
-                            continue;
+                    string poster = string.Empty;
+                    if (!string.IsNullOrWhiteSpace(item?.media?.posterUid))
+                        poster = PosterApi.Size($"https://images.mikai.me/poster/small/{item.media.posterUid}.webp");
 
-                        string itemTitle = item?.details?.names?.name ?? item?.details?.names?.nameEnglish ?? item?.details?.names?.nameNative ?? item?.slug;
-                        if (string.IsNullOrWhiteSpace(itemTitle))
-                            continue;
-
-                        string poster = string.Empty;
-                        if (!string.IsNullOrWhiteSpace(item?.media?.posterUid))
-                            poster = PosterApi.Size($"https://images.mikai.me/poster/small/{item.media.posterUid}.webp");
-
-                        list.Add((item.id, itemTitle, item.year > 0 ? item.year.ToString() : string.Empty, poster));
-                    }
-
-                    if (list.Count == 0)
-                        return e.Fail("catalog");
-
-                    return e.Success(list);
-                });
-
-                if (IsRhubFallback(search))
-                    goto rhubFallbackSearch;
-
-                if (!search.IsSuccess)
-                    return OnError(search.ErrorMsg);
-
-                var stpl = new SimilarTpl(search.Value.Count);
-
-                foreach (var item in search.Value)
-                {
-                    string link = $"{host}/lite/mikai?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&year={year}&animeid={item.id}";
-                    stpl.Append(item.title, item.year, string.Empty, link, item.poster);
+                    list.Add((item.id, itemTitle, item.year > 0 ? item.year.ToString() : string.Empty, poster));
                 }
 
-                return ContentTpl(stpl);
-            }
-        #endregion
+                if (list.Count == 0)
+                    return e.Fail("catalog");
 
-        rhubFallbackAnime:
-            var anime = await InvokeCacheResult<AnimeResult>($"mikai:anime:{animeid}", TimeSpan.FromHours(2), async e =>
-            {
-                var root = await httpHydra.Get<AnimeResponse>($"{init.host}/v1/anime/{animeid}");
-                var result = root?.result;
-                if (result?.players == null || result.players.Length == 0)
-                    return e.Fail("players", refresh_proxy: true);
-
-                return e.Success(result);
+                return e.Success(list);
             });
 
-            if (IsRhubFallback(anime))
-                goto rhubFallbackAnime;
+            if (IsRhubFallback(search))
+                goto rhubFallbackSearch;
 
-            if (!anime.IsSuccess)
-                return OnError(anime.ErrorMsg);
+            if (!search.IsSuccess)
+                return OnError(search.ErrorMsg);
 
-            var voices = new List<(string title, List<ProviderEpisode> episodes)>();
-            foreach (var player in anime.Value.players)
+            var stpl = new SimilarTpl(search.Value.Count);
+
+            foreach (var item in search.Value)
             {
-                var provider = player?.providers?.FirstOrDefault(p => string.Equals(p?.name, "ASHDI", StringComparison.OrdinalIgnoreCase));
-                if (provider?.episodes == null || provider.episodes.Length == 0)
-                    continue;
-
-                string voiceTitle = player?.team?.name;
-                if (string.IsNullOrWhiteSpace(voiceTitle))
-                    voiceTitle = "ASHDI";
-
-                voices.Add((voiceTitle, provider.episodes.Where(e => !string.IsNullOrWhiteSpace(e?.playLink)).ToList()));
+                string link = $"{host}/lite/mikai?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&year={year}&animeid={item.id}";
+                stpl.Append(item.title, item.year, string.Empty, link, item.poster);
             }
 
-            voices = voices.Where(v => v.episodes.Count > 0).ToList();
-            if (voices.Count == 0)
-                return OnError("ashdi providers");
-
-            if (t == -1)
-                t = 0;
-
-            if (t >= voices.Count)
-                t = 0;
-
-            var currentVoice = voices[t];
-
-            var vtpl = new VoiceTpl(voices.Count);
-            for (int i = 0; i < voices.Count; i++)
-            {
-                string link = $"{host}/lite/mikai?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&year={year}&animeid={animeid}&t={i}";
-                vtpl.Append(voices[i].title, i == t, link);
-            }
-
-            var episodes = currentVoice.episodes
-                .OrderBy(e => e.number)
-                .ToList();
-
-            if (episodes.Count == 0)
-                return OnError("episodes");
-
-            var etpl = new EpisodeTpl(vtpl, episodes.Count);
-            string season = DetectSeason(anime.Value);
-
-            foreach (var item in episodes)
-            {
-                int episodeNum = item.number > 0 ? item.number : episodes.IndexOf(item) + 1;
-                string episodeTitle = $"{episodeNum} серия";
-                string link = accsArgs($"{host}/lite/ashdi/vod.m3u8?uri={EncryptQuery(item.playLink)}");
-
-                etpl.Append(episodeTitle, title ?? original_title, season, episodeNum.ToString(), link, "call", streamlink: $"{link}&play=true", vast: init.vast);
-            }
-
-            return ContentTpl(etpl);
+            return ContentTpl(stpl);
         }
+        #endregion
 
-
-        static string DetectSeason(AnimeResult anime)
+    rhubFallbackAnime:
+        var anime = await InvokeCacheResult<AnimeResult>($"mikai:anime:{animeid}", TimeSpan.FromHours(2), async e =>
         {
-            if (anime == null)
-                return "1";
+            var root = await httpHydra.Get<AnimeResponse>($"{init.host}/v1/anime/{animeid}");
+            var result = root?.result;
+            if (result?.players == null || result.players.Length == 0)
+                return e.Fail("players", refresh_proxy: true);
 
-            var seasonSource = new[]
-            {
-                anime.slug,
-                anime.details?.names?.name,
-                anime.details?.names?.nameNative,
-                anime.details?.names?.nameEnglish
-            };
+            return e.Success(result);
+        });
 
-            foreach (var source in seasonSource)
-            {
-                if (string.IsNullOrWhiteSpace(source))
-                    continue;
+        if (IsRhubFallback(anime))
+            goto rhubFallbackAnime;
 
-                var match = Regex.Match(source, @"(?<!\d)(\d{1,2})\s*[- ]?(?:сезон|sezon|season)\b", RegexOptions.IgnoreCase);
-                if (match.Success)
-                    return match.Groups[1].Value;
-            }
+        if (!anime.IsSuccess)
+            return OnError(anime.ErrorMsg);
 
-            return "1";
+        var voices = new List<(string title, List<ProviderEpisode> episodes)>();
+        foreach (var player in anime.Value.players)
+        {
+            var provider = player?.providers?.FirstOrDefault(p => string.Equals(p?.name, "ASHDI", StringComparison.OrdinalIgnoreCase));
+            if (provider?.episodes == null || provider.episodes.Length == 0)
+                continue;
+
+            string voiceTitle = player?.team?.name;
+            if (string.IsNullOrWhiteSpace(voiceTitle))
+                voiceTitle = "ASHDI";
+
+            voices.Add((voiceTitle, provider.episodes.Where(e => !string.IsNullOrWhiteSpace(e?.playLink)).ToList()));
         }
+
+        voices = voices.Where(v => v.episodes.Count > 0).ToList();
+        if (voices.Count == 0)
+            return OnError("ashdi providers");
+
+        if (t == -1)
+            t = 0;
+
+        if (t >= voices.Count)
+            t = 0;
+
+        var currentVoice = voices[t];
+
+        var vtpl = new VoiceTpl(voices.Count);
+        for (int i = 0; i < voices.Count; i++)
+        {
+            string link = $"{host}/lite/mikai?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&year={year}&animeid={animeid}&t={i}";
+            vtpl.Append(voices[i].title, i == t, link);
+        }
+
+        var episodes = currentVoice.episodes
+            .OrderBy(e => e.number)
+            .ToList();
+
+        if (episodes.Count == 0)
+            return OnError("episodes");
+
+        var etpl = new EpisodeTpl(vtpl, episodes.Count);
+        string season = DetectSeason(anime.Value);
+
+        foreach (var item in episodes)
+        {
+            int episodeNum = item.number > 0 ? item.number : episodes.IndexOf(item) + 1;
+            string episodeTitle = $"{episodeNum} серия";
+            string link = accsArgs($"{host}/lite/ashdi/vod.m3u8?uri={EncryptQuery(item.playLink)}");
+
+            etpl.Append(episodeTitle, title ?? original_title, season, episodeNum.ToString(), link, "call", streamlink: $"{link}&play=true", vast: init.vast);
+        }
+
+        return ContentTpl(etpl);
+    }
+
+
+    static string DetectSeason(AnimeResult anime)
+    {
+        if (anime == null)
+            return "1";
+
+        var seasonSource = new[]
+        {
+            anime.slug,
+            anime.details?.names?.name,
+            anime.details?.names?.nameNative,
+            anime.details?.names?.nameEnglish
+        };
+
+        foreach (var source in seasonSource)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+                continue;
+
+            var match = Regex.Match(source, @"(?<!\d)(\d{1,2})\s*[- ]?(?:сезон|sezon|season)\b", RegexOptions.IgnoreCase);
+            if (match.Success)
+                return match.Groups[1].Value;
+        }
+
+        return "1";
     }
 }

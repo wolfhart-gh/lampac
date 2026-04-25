@@ -1,36 +1,35 @@
 ﻿using Newtonsoft.Json.Linq;
 
-namespace Sync.Models
+namespace Sync;
+
+public class EventPayload
 {
-    public class EventPayload
+    public string Method { get; set; }
+
+    public string Where { get; set; }
+
+    public JObject Card { get; set; }
+
+    public string CardIdRaw { get; set; }
+
+    public string ResolveCardId()
     {
-        public string Method { get; set; }
+        if (!string.IsNullOrWhiteSpace(CardIdRaw))
+            return CardIdRaw.ToLowerAndTrim();
 
-        public string Where { get; set; }
-
-        public JObject Card { get; set; }
-
-        public string CardIdRaw { get; set; }
-
-        public string ResolveCardId()
+        var token = Card?["id"];
+        if (token != null)
         {
-            if (!string.IsNullOrWhiteSpace(CardIdRaw))
-                return CardIdRaw.ToLowerAndTrim();
+            if (token.Type == JTokenType.Integer)
+                return token.Value<long>().ToString();
 
-            var token = Card?["id"];
-            if (token != null)
-            {
-                if (token.Type == JTokenType.Integer)
-                    return token.Value<long>().ToString();
+            string _id = token.ToString();
+            if (string.IsNullOrWhiteSpace(_id))
+                return null;
 
-                string _id = token.ToString();
-                if (string.IsNullOrWhiteSpace(_id))
-                    return null;
-
-                return _id.ToLowerAndTrim();
-            }
-
-            return null;
+            return _id.ToLowerAndTrim();
         }
+
+        return null;
     }
 }

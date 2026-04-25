@@ -10,4 +10,3 @@ global using Shared.Services;
 global using Shared.Models.Templates;
 global using Shared.Models.Base;
 global using Shared.Services.Utilities;
-global using Filmix.Services;

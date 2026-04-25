@@ -8,78 +8,77 @@ using Shared.Services;
 using System.Collections.Generic;
 using Shared;
 
-namespace AnimeLib
+namespace AnimeLib;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf)
-            };
-        }
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+        return new List<ModuleOnlineSpiderItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf)
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("animelib");
 
-        public void Loaded(InitspaceModel baseconf)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("AnimeLib", new OnlinesSettings("AnimeLib", "https://hapi.hentaicdn.org", streamproxy: true, stream_access: "apk")
         {
-            CoreInit.conf.online.with_search.Add("animelib");
+            enable = false,
+            rhub_safety = false,
+            displayindex = 115,
+            httpversion = 2,
+            headers = HeadersModel.Init(Http.defaultFullHeaders,
+                ("origin", "https://anilib.me"),
+                ("referer", "https://anilib.me/"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "cross-site")
+            ).ToDictionary(),
+            headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
+                ("accept-encoding", "identity;q=1, *;q=0"),
+                ("origin", "https://anilib.me"),
+                ("referer", "https://anilib.me/"),
+                ("sec-fetch-dest", "video"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "same-site")
+            ).ToDictionary()
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("AnimeLib", new OnlinesSettings("AnimeLib", "https://hapi.hentaicdn.org", streamproxy: true, stream_access: "apk")
-            {
-                enable = false,
-                rhub_safety = false,
-                displayindex = 115,
-                httpversion = 2,
-                headers = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("origin", "https://anilib.me"),
-                    ("referer", "https://anilib.me/"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "cross-site")
-                ).ToDictionary(),
-                headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("accept-encoding", "identity;q=1, *;q=0"),
-                    ("origin", "https://anilib.me"),
-                    ("referer", "https://anilib.me/"),
-                    ("sec-fetch-dest", "video"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "same-site")
-                ).ToDictionary()
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "animelib" ? " ~ 2160p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "animelib" ? " ~ 2160p" : null;
     }
 }

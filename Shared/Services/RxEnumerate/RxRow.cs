@@ -1,125 +1,124 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace Shared.Services.RxEnumerate
+namespace Shared.Services.RxEnumerate;
+
+public readonly ref struct RxRow
 {
-    public readonly ref struct RxRow
+    private readonly bool _emptyRow;
+    private readonly ReadOnlySpan<char> _html;
+    private readonly int _start;
+    private readonly int _end;
+    private readonly string _pattern;
+
+    public RxRow()
     {
-        private readonly bool _emptyRow;
-        private readonly ReadOnlySpan<char> _html;
-        private readonly int _start;
-        private readonly int _end;
-        private readonly string _pattern;
+        _emptyRow = true;
+        _pattern = string.Empty;
+    }
 
-        public RxRow()
+    internal RxRow(ReadOnlySpan<char> html, Range range, string pattern)
+    {
+        _html = html;
+        _pattern = pattern;
+        _start = range.Start.GetOffset(html.Length);
+        _end = range.End.GetOffset(html.Length);
+    }
+
+    public int Start => _emptyRow ? 0 : _start;
+    public int End => _emptyRow ? 0 : _end;
+
+    public ReadOnlySpan<char> Span => _emptyRow ? ReadOnlySpan<char>.Empty : _html.Slice(_start, _end - _start);
+
+    public override string ToString() => _emptyRow ? string.Empty : new string(Span);
+
+    private bool TryGetFirstMatchSpan(string pattern, RegexOptions options, out ReadOnlySpan<char> matchSpan)
+    {
+        if (_emptyRow)
         {
-            _emptyRow = true;
-            _pattern = string.Empty;
+            matchSpan = default;
+            return false;
         }
 
-        internal RxRow(ReadOnlySpan<char> html, Range range, string pattern)
+        var span = Span;
+
+        var e = Regex.EnumerateMatches(span, pattern, options);
+        if (!e.MoveNext())
         {
-            _html = html;
-            _pattern = pattern;
-            _start = range.Start.GetOffset(html.Length);
-            _end = range.End.GetOffset(html.Length);
+            matchSpan = default;
+            return false;
         }
 
-        public int Start => _emptyRow ? 0 : _start;
-        public int End => _emptyRow ? 0 : _end;
+        var vm = e.Current; // ValueMatch: Index + Length (относительно Span)
+        matchSpan = span.Slice(vm.Index, vm.Length);
 
-        public ReadOnlySpan<char> Span => _emptyRow ? ReadOnlySpan<char>.Empty : _html.Slice(_start, _end - _start);
+        if (matchSpan.IsEmpty)
+            return false;
 
-        public override string ToString() => _emptyRow ? string.Empty : new string(Span);
+        return true;
+    }
 
-        private bool TryGetFirstMatchSpan(string pattern, RegexOptions options, out ReadOnlySpan<char> matchSpan)
-        {
-            if (_emptyRow)
-            {
-                matchSpan = default;
-                return false;
-            }
+    public GroupCollection Groups(RegexOptions options = RegexOptions.CultureInvariant)
+        => Groups(_pattern, options);
 
-            var span = Span;
+    public GroupCollection Groups(string pattern, RegexOptions options = RegexOptions.CultureInvariant)
+    {
+        if (!TryGetFirstMatchSpan(pattern, options, out var matchSpan))
+            return System.Text.RegularExpressions.Match.Empty.Groups;
 
-            var e = Regex.EnumerateMatches(span, pattern, options);
-            if (!e.MoveNext())
-            {
-                matchSpan = default;
-                return false;
-            }
+        string segmentText = new string(matchSpan);
+        var m = Regex.Match(segmentText, pattern, options);
+        return m.Groups;
+    }
 
-            var vm = e.Current; // ValueMatch: Index + Length (относительно Span)
-            matchSpan = span.Slice(vm.Index, vm.Length);
+    public string Match(string pattern, int index = 1, bool trim = false, RegexOptions options = RegexOptions.CultureInvariant)
+    {
+        if (!TryGetFirstMatchSpan(pattern, options, out var matchSpan))
+            return null;
 
-            if (matchSpan.IsEmpty)
-                return false;
+        string segmentText = new string(matchSpan);
+        var m = Regex.Match(segmentText, pattern, options);
 
-            return true;
-        }
+        if (!m.Success || index < 0 || index >= m.Groups.Count)
+            return null;
 
-        public GroupCollection Groups(RegexOptions options = RegexOptions.CultureInvariant)
-            => Groups(_pattern, options);
+        string value = m.Groups[index].Value;
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
 
-        public GroupCollection Groups(string pattern, RegexOptions options = RegexOptions.CultureInvariant)
-        {
-            if (!TryGetFirstMatchSpan(pattern, options, out var matchSpan))
-                return System.Text.RegularExpressions.Match.Empty.Groups;
+        return trim ? value.Trim() : value;
+    }
 
-            string segmentText = new string(matchSpan);
-            var m = Regex.Match(segmentText, pattern, options);
-            return m.Groups;
-        }
+    public string Match(string pattern, string name, bool trim = false, RegexOptions options = RegexOptions.CultureInvariant)
+    {
+        if (!TryGetFirstMatchSpan(pattern, options, out var matchSpan))
+            return null;
 
-        public string Match(string pattern, int index = 1, bool trim = false, RegexOptions options = RegexOptions.CultureInvariant)
-        {
-            if (!TryGetFirstMatchSpan(pattern, options, out var matchSpan))
-                return null;
+        string segmentText = new string(matchSpan);
+        var m = Regex.Match(segmentText, pattern, options);
 
-            string segmentText = new string(matchSpan);
-            var m = Regex.Match(segmentText, pattern, options);
+        if (!m.Success)
+            return null;
 
-            if (!m.Success || index < 0 || index >= m.Groups.Count)
-                return null;
+        string value = m.Groups[name]?.Value ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
 
-            string value = m.Groups[index].Value;
-            if (string.IsNullOrWhiteSpace(value))
-                return null;
+        return trim ? value.Trim() : value;
+    }
 
-            return trim ? value.Trim() : value;
-        }
+    public bool Contains(string value, StringComparison comparison = StringComparison.Ordinal)
+    {
+        if (_emptyRow)
+            return false;
 
-        public string Match(string pattern, string name, bool trim = false, RegexOptions options = RegexOptions.CultureInvariant)
-        {
-            if (!TryGetFirstMatchSpan(pattern, options, out var matchSpan))
-                return null;
+        return Span.IndexOf(value.AsSpan(), comparison) >= 0;
+    }
 
-            string segmentText = new string(matchSpan);
-            var m = Regex.Match(segmentText, pattern, options);
+    public bool Contains(ReadOnlySpan<char> value, StringComparison comparison = StringComparison.Ordinal)
+    {
+        if (_emptyRow)
+            return false;
 
-            if (!m.Success)
-                return null;
-
-            string value = m.Groups[name]?.Value ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(value))
-                return null;
-
-            return trim ? value.Trim() : value;
-        }
-
-        public bool Contains(string value, StringComparison comparison = StringComparison.Ordinal)
-        {
-            if (_emptyRow)
-                return false;
-
-            return Span.IndexOf(value.AsSpan(), comparison) >= 0;
-        }
-
-        public bool Contains(ReadOnlySpan<char> value, StringComparison comparison = StringComparison.Ordinal)
-        {
-            if (_emptyRow)
-                return false;
-
-            return Span.IndexOf(value, comparison) >= 0;
-        }
+        return Span.IndexOf(value, comparison) >= 0;
     }
 }

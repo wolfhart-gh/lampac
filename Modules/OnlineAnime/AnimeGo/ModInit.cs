@@ -6,68 +6,66 @@ using Shared.Models.Module.Interfaces;
 using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
-using System.Linq;
 using Shared;
 
-namespace AnimeGo
+namespace AnimeGo;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf)
-            };
-        }
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+        return new List<ModuleOnlineSpiderItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf)
+        };
+    }
 
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf)
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("animego");
 
-        public void Loaded(InitspaceModel baseconf)
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("AnimeGo", new OnlinesSettings("AnimeGo", "https://animego.me", streamproxy: true, enable: false)
         {
-            CoreInit.conf.online.with_search.Add("animego");
+            displayindex = 155,
+            httpversion = 2,
+            headers_stream = HeadersModel.Init(
+                ("origin", "https://aniboom.one"),
+                ("referer", "https://aniboom.one/")
+            ).ToDictionary()
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("AnimeGo", new OnlinesSettings("AnimeGo", "https://animego.me", streamproxy: true, enable: false)
-            {
-                displayindex = 155,
-                httpversion = 2,
-                headers_stream = HeadersModel.Init(
-                    ("origin", "https://aniboom.one"),
-                    ("referer", "https://aniboom.one/")
-                ).ToDictionary()
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "animego" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "animego" ? " ~ 1080p" : null;
     }
 }

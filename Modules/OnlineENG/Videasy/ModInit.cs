@@ -9,53 +9,52 @@ using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Videasy
+namespace Videasy;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
         {
-            var online = new List<ModuleOnlineItem>();
-
-            if ((args.original_language == null || args.original_language == "en") && CoreInit.conf.disableEng == false)
+            if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
             {
-                if (args.source != null && (args.source is "tmdb" or "cub") && long.TryParse(args.id, out long id) && id > 0)
-                {
-                    if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
-                        online.Add(new(conf, "videasy", "Videasy", " (ENG)"));
-                }
+                if (PlaywrightBrowser.Status != PlaywrightStatus.disabled)
+                    online.Add(new(conf, "videasy", "Videasy", " (ENG)"));
             }
-
-            return online;
         }
 
-        public void Loaded(InitspaceModel baseconf)
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        UpdateConf();
+        EventListener.UpdateInitFile += UpdateConf;
+        EventListener.OnlineApiQuality += OnlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= UpdateConf;
+        EventListener.OnlineApiQuality -= OnlineApiQuality;
+    }
+
+    private void UpdateConf()
+    {
+        conf = ModuleInvoke.Init("Videasy", new OnlinesSettings("Videasy", "https://player.videasy.net")
         {
-            UpdateConf();
-            EventListener.UpdateInitFile += UpdateConf;
-            EventListener.OnlineApiQuality += OnlineApiQuality;
-        }
+            displayindex = 1020,
+            streamproxy = true
+        });
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= UpdateConf;
-            EventListener.OnlineApiQuality -= OnlineApiQuality;
-        }
-
-        private void UpdateConf()
-        {
-            conf = ModuleInvoke.Init("Videasy", new OnlinesSettings("Videasy", "https://player.videasy.net")
-            {
-                displayindex = 1020,
-                streamproxy = true
-            });
-        }
-
-        private string OnlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "videasy" ? " ~ 1080p" : null;
-        }
+    private string OnlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "videasy" ? " ~ 1080p" : null;
     }
 }

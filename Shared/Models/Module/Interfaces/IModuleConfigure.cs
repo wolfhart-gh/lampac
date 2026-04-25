@@ -1,7 +1,6 @@
-﻿namespace Shared.Models.Module.Interfaces
+﻿namespace Shared.Models.Module.Interfaces;
+
+public interface IModuleConfigure
 {
-    public interface IModuleConfigure
-    {
-        void Configure(ConfigureModel app);
-    }
+    void Configure(ConfigureModel app);
 }

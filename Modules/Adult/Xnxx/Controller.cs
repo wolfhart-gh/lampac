@@ -8,91 +8,90 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace Xnxx
+namespace Xnxx;
+
+public class XnxxController : BaseSisiController
 {
-    public class XnxxController : BaseSisiController
+    static readonly HttpClient http2Client = FriendlyHttp.CreateHttp2Client();
+
+    public XnxxController() : base(ModInit.conf)
     {
-        static readonly HttpClient http2Client = FriendlyHttp.CreateHttp2Client();
-
-        public XnxxController() : base(ModInit.conf)
+        requestInitialization += () =>
         {
-            requestInitialization += () =>
-            {
-                if (init.httpversion == 2)
-                    httpHydra.RegisterHttp(http2Client);
-            };
-        }
+            if (init.httpversion == 2)
+                httpHydra.RegisterHttp(http2Client);
+        };
+    }
 
-        [HttpGet]
-        [Staticache]
-        [Route("xnx")]
-        async public Task<ActionResult> Index(string search, int pg = 1)
+    [HttpGet]
+    [Staticache]
+    [Route("xnx")]
+    async public Task<ActionResult> Index(string search, int pg = 1)
+    {
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult($"xnx:list:{search}:{pg}", 10, jsonContext.ListPlaylistItem, async e =>
         {
-            if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-                return badInitMsg;
+            List<PlaylistItem> playlists = null;
 
-            rhubFallback:
-            var cache = await InvokeCacheResult($"xnx:list:{search}:{pg}", 10, jsonContext.ListPlaylistItem, async e =>
+            await httpHydra.GetSpan(XnxxTo.Uri(init.host, search, pg), span =>
             {
-                List<PlaylistItem> playlists = null;
-
-                await httpHydra.GetSpan(XnxxTo.Uri(init.host, search, pg), span =>
-                {
-                    playlists = XnxxTo.Playlist("xnx/vidosik", span);
-                });
-
-                if (playlists == null || playlists.Count == 0)
-                    return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
-
-                return e.Success(playlists);
+                playlists = XnxxTo.Playlist("xnx/vidosik", span);
             });
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
+            if (playlists == null || playlists.Count == 0)
+                return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
 
-            if (rch?.enable == true)
-                StatiCacheDisabled = true;
+            return e.Success(playlists);
+        });
 
-            return PlaylistResult(cache,
-                string.IsNullOrEmpty(search) ? XnxxTo.Menu(host) : null
-            );
-        }
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
 
-        [HttpGet]
-        [Staticache]
-        [Route("xnx/vidosik")]
-        async public Task<ActionResult> Index(string uri, bool related)
+        if (rch?.enable == true)
+            StatiCacheDisabled = true;
+
+        return PlaylistResult(cache,
+            string.IsNullOrEmpty(search) ? XnxxTo.Menu(host) : null
+        );
+    }
+
+    [HttpGet]
+    [Staticache]
+    [Route("xnx/vidosik")]
+    async public Task<ActionResult> Index(string uri, bool related)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult($"xnxx:view:{uri}", 20, jsonContext.StreamItem, async e =>
         {
-            if (await IsRequestBlocked(rch: true))
-                return badInitMsg;
+            string url = XnxxTo.StreamLinksUri(init.host, uri);
+            if (url == null)
+                return e.Fail("uri");
 
-            rhubFallback:
-            var cache = await InvokeCacheResult($"xnxx:view:{uri}", 20, jsonContext.StreamItem, async e =>
+            StreamItem stream_links = null;
+
+            await httpHydra.GetSpan(url, span =>
             {
-                string url = XnxxTo.StreamLinksUri(init.host, uri);
-                if (url == null)
-                    return e.Fail("uri");
-
-                StreamItem stream_links = null;
-
-                await httpHydra.GetSpan(url, span =>
-                {
-                    stream_links = XnxxTo.StreamLinks(span, "xnx/vidosik");
-                });
-
-                if (stream_links?.qualitys == null || stream_links.qualitys.Count == 0)
-                    return e.Fail("stream_links", refresh_proxy: true);
-
-                return e.Success(stream_links);
+                stream_links = XnxxTo.StreamLinks(span, "xnx/vidosik");
             });
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
+            if (stream_links?.qualitys == null || stream_links.qualitys.Count == 0)
+                return e.Fail("stream_links", refresh_proxy: true);
 
-            if (related)
-                return PlaylistResult(cache.Value?.recomends, cache.ISingleCache, null, total_pages: 1);
+            return e.Success(stream_links);
+        });
 
-            return OnResult(cache);
-        }
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
+
+        if (related)
+            return PlaylistResult(cache.Value?.recomends, cache.ISingleCache, null, total_pages: 1);
+
+        return OnResult(cache);
     }
 }

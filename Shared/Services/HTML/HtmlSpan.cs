@@ -1,337 +1,336 @@
-﻿namespace Shared.Services.HTML
+﻿namespace Shared.Services.HTML;
+
+public enum HtmlSpanTargetType
 {
-    public enum HtmlSpanTargetType
+    Exact = 0,
+    Contains = 1
+}
+
+public static class HtmlSpan
+{
+    public static ReadOnlySpan<char> Node(
+        ReadOnlySpan<char> html,
+        string element,
+        string attribute,
+        string target,
+        HtmlSpanTargetType targetType)
     {
-        Exact = 0,
-        Contains = 1
+        if (html.IsEmpty)
+            return ReadOnlySpan<char>.Empty;
+
+        foreach (var span in Nodes(html, element, attribute, target, targetType))
+            return span;
+
+        return ReadOnlySpan<char>.Empty;
     }
 
-    public static class HtmlSpan
+    public static NodesEnumerable Nodes(
+        ReadOnlySpan<char> html,
+        string element,
+        string attribute,
+        string target,
+        HtmlSpanTargetType targetType)
+        => new NodesEnumerable(html, element, attribute, target, targetType);
+
+    public readonly ref struct NodesEnumerable
     {
-        public static ReadOnlySpan<char> Node(
-            ReadOnlySpan<char> html,
-            string element,
-            string attribute,
-            string target,
-            HtmlSpanTargetType targetType)
+        private readonly ReadOnlySpan<char> _html;
+        private readonly string _element;
+        private readonly string _attribute;
+        private readonly string _target;
+        private readonly HtmlSpanTargetType _targetType;
+
+        public NodesEnumerable(ReadOnlySpan<char> html, string element, string attribute, string target, HtmlSpanTargetType targetType)
         {
-            if (html.IsEmpty)
-                return ReadOnlySpan<char>.Empty;
-
-            foreach (var span in Nodes(html, element, attribute, target, targetType))
-                return span;
-
-            return ReadOnlySpan<char>.Empty;
+            _html = html;
+            _element = element;
+            _attribute = attribute;
+            _target = target;
+            _targetType = targetType;
         }
 
-        public static NodesEnumerable Nodes(
-            ReadOnlySpan<char> html,
-            string element,
-            string attribute,
-            string target,
-            HtmlSpanTargetType targetType)
-            => new NodesEnumerable(html, element, attribute, target, targetType);
+        public Enumerator GetEnumerator() => new Enumerator(_html, _element, _attribute, _target, _targetType);
+    }
 
-        public readonly ref struct NodesEnumerable
+    public ref struct Enumerator
+    {
+        private readonly ReadOnlySpan<char> _html;
+        private readonly string _element;
+        private readonly string _attribute;
+        private readonly string _target;
+        private readonly HtmlSpanTargetType _targetType;
+        private readonly bool _anyElement;
+
+        private int _scanIndex;
+        private bool _inCapture;
+        private int _captureStartIndex;
+        private int _depth;
+        private string _captureTagName;
+
+        private ReadOnlySpan<char> _current;
+
+        public ReadOnlySpan<char> Current => _current;
+
+        public Enumerator(ReadOnlySpan<char> html, string element, string attribute, string target, HtmlSpanTargetType targetType)
         {
-            private readonly ReadOnlySpan<char> _html;
-            private readonly string _element;
-            private readonly string _attribute;
-            private readonly string _target;
-            private readonly HtmlSpanTargetType _targetType;
+            _html = html;
+            _element = element;
+            _attribute = attribute;
+            _target = target;
+            _targetType = targetType;
+            _anyElement = element.Length == 1 && element[0] == '*';
 
-            public NodesEnumerable(ReadOnlySpan<char> html, string element, string attribute, string target, HtmlSpanTargetType targetType)
-            {
-                _html = html;
-                _element = element;
-                _attribute = attribute;
-                _target = target;
-                _targetType = targetType;
-            }
-
-            public Enumerator GetEnumerator() => new Enumerator(_html, _element, _attribute, _target, _targetType);
+            _scanIndex = 0;
+            _inCapture = false;
+            _captureStartIndex = -1;
+            _depth = 0;
+            _captureTagName = null;
+            _current = ReadOnlySpan<char>.Empty;
         }
 
-        public ref struct Enumerator
+        public bool MoveNext()
         {
-            private readonly ReadOnlySpan<char> _html;
-            private readonly string _element;
-            private readonly string _attribute;
-            private readonly string _target;
-            private readonly HtmlSpanTargetType _targetType;
-            private readonly bool _anyElement;
+            _current = ReadOnlySpan<char>.Empty;
+            if (_html.IsEmpty)
+                return false;
 
-            private int _scanIndex;
-            private bool _inCapture;
-            private int _captureStartIndex;
-            private int _depth;
-            private string _captureTagName;
-
-            private ReadOnlySpan<char> _current;
-
-            public ReadOnlySpan<char> Current => _current;
-
-            public Enumerator(ReadOnlySpan<char> html, string element, string attribute, string target, HtmlSpanTargetType targetType)
+            while (TryReadTag(_html, ref _scanIndex, out var tag))
             {
-                _html = html;
-                _element = element;
-                _attribute = attribute;
-                _target = target;
-                _targetType = targetType;
-                _anyElement = element.Length == 1 && element[0] == '*';
+                if (!_inCapture)
+                {
+                    if (tag.IsEndTag)
+                        continue;
 
-                _scanIndex = 0;
-                _inCapture = false;
-                _captureStartIndex = -1;
-                _depth = 0;
-                _captureTagName = null;
-                _current = ReadOnlySpan<char>.Empty;
-            }
+                    if (!_anyElement && !EqualsOrdinalIgnoreCase(tag.Name, _element))
+                        continue;
 
-            public bool MoveNext()
-            {
-                _current = ReadOnlySpan<char>.Empty;
-                if (_html.IsEmpty)
+                    if (!TagHasAttributeMatch(_html.Slice(tag.Start, tag.End - tag.Start), _attribute, _target, _targetType))
+                        continue;
+
+                    _inCapture = true;
+                    _captureStartIndex = tag.Start;
+                    _captureTagName = tag.Name;
+
+                    if (tag.IsEmptyElement)
+                    {
+                        _inCapture = false;
+                        _captureTagName = null;
+                        _depth = 0;
+
+                        _current = _html.Slice(_captureStartIndex, tag.End - _captureStartIndex);
+                        return true;
+                    }
+
+                    _depth = 1;
+                    continue;
+                }
+
+                if (_captureTagName is null)
                     return false;
 
-                while (TryReadTag(_html, ref _scanIndex, out var tag))
+                if (!EqualsOrdinalIgnoreCase(tag.Name, _captureTagName))
+                    continue;
+
+                if (tag.IsEndTag)
                 {
-                    if (!_inCapture)
+                    _depth--;
+                    if (_depth == 0)
                     {
-                        if (tag.IsEndTag)
-                            continue;
+                        int start = _captureStartIndex;
+                        int len = tag.End - start;
 
-                        if (!_anyElement && !EqualsOrdinalIgnoreCase(tag.Name, _element))
-                            continue;
+                        _inCapture = false;
+                        _captureStartIndex = -1;
+                        _captureTagName = null;
+                        _depth = 0;
 
-                        if (!TagHasAttributeMatch(_html.Slice(tag.Start, tag.End - tag.Start), _attribute, _target, _targetType))
-                            continue;
-
-                        _inCapture = true;
-                        _captureStartIndex = tag.Start;
-                        _captureTagName = tag.Name;
-
-                        if (tag.IsEmptyElement)
-                        {
-                            _inCapture = false;
-                            _captureTagName = null;
-                            _depth = 0;
-
-                            _current = _html.Slice(_captureStartIndex, tag.End - _captureStartIndex);
-                            return true;
-                        }
-
-                        _depth = 1;
-                        continue;
-                    }
-
-                    if (_captureTagName is null)
-                        return false;
-
-                    if (!EqualsOrdinalIgnoreCase(tag.Name, _captureTagName))
-                        continue;
-
-                    if (tag.IsEndTag)
-                    {
-                        _depth--;
-                        if (_depth == 0)
-                        {
-                            int start = _captureStartIndex;
-                            int len = tag.End - start;
-
-                            _inCapture = false;
-                            _captureStartIndex = -1;
-                            _captureTagName = null;
-                            _depth = 0;
-
-                            _current = _html.Slice(start, len);
-                            return true;
-                        }
-                    }
-                    else if (!tag.IsEmptyElement)
-                    {
-                        _depth++;
+                        _current = _html.Slice(start, len);
+                        return true;
                     }
                 }
-
-                return false;
-            }
-        }
-
-        private readonly struct ParsedTag
-        {
-            public ParsedTag(int start, int end, string name, bool isEndTag, bool isEmptyElement)
-            {
-                Start = start;
-                End = end;
-                Name = name;
-                IsEndTag = isEndTag;
-                IsEmptyElement = isEmptyElement;
+                else if (!tag.IsEmptyElement)
+                {
+                    _depth++;
+                }
             }
 
-            public int Start { get; }
-            public int End { get; }
-            public string Name { get; }
-            public bool IsEndTag { get; }
-            public bool IsEmptyElement { get; }
+            return false;
+        }
+    }
+
+    private readonly struct ParsedTag
+    {
+        public ParsedTag(int start, int end, string name, bool isEndTag, bool isEmptyElement)
+        {
+            Start = start;
+            End = end;
+            Name = name;
+            IsEndTag = isEndTag;
+            IsEmptyElement = isEmptyElement;
         }
 
-        private static bool TryReadTag(ReadOnlySpan<char> html, ref int scanIndex, out ParsedTag tag)
-        {
-            int len = html.Length;
-            while (scanIndex < len)
-            {
-                int lt = html.Slice(scanIndex).IndexOf('<');
-                if (lt < 0)
-                    break;
+        public int Start { get; }
+        public int End { get; }
+        public string Name { get; }
+        public bool IsEndTag { get; }
+        public bool IsEmptyElement { get; }
+    }
 
-                int start = scanIndex + lt;
-                int i = start + 1;
+    private static bool TryReadTag(ReadOnlySpan<char> html, ref int scanIndex, out ParsedTag tag)
+    {
+        int len = html.Length;
+        while (scanIndex < len)
+        {
+            int lt = html.Slice(scanIndex).IndexOf('<');
+            if (lt < 0)
+                break;
+
+            int start = scanIndex + lt;
+            int i = start + 1;
+            if (i >= len)
+                break;
+
+            if (html[i] == '!' || html[i] == '?')
+            {
+                scanIndex = start + 1;
+                continue;
+            }
+
+            bool isEndTag = false;
+            if (html[i] == '/')
+            {
+                isEndTag = true;
+                i++;
                 if (i >= len)
                     break;
-
-                if (html[i] == '!' || html[i] == '?')
-                {
-                    scanIndex = start + 1;
-                    continue;
-                }
-
-                bool isEndTag = false;
-                if (html[i] == '/')
-                {
-                    isEndTag = true;
-                    i++;
-                    if (i >= len)
-                        break;
-                }
-
-                int nameStart = i;
-                while (i < len && IsTagNameChar(html[i]))
-                    i++;
-
-                if (i == nameStart)
-                {
-                    scanIndex = start + 1;
-                    continue;
-                }
-
-                string tagName = html.Slice(nameStart, i - nameStart).ToString();
-
-                char quote = '\0';
-                bool isEmptyElement = false;
-
-                while (i < len)
-                {
-                    char ch = html[i];
-                    if (quote == '\0')
-                    {
-                        if (ch == '"' || ch == '\'')
-                        {
-                            quote = ch;
-                        }
-                        else if (ch == '>')
-                        {
-                            if (i > start && html[i - 1] == '/')
-                                isEmptyElement = true;
-
-                            tag = new ParsedTag(start, i + 1, tagName, isEndTag, isEmptyElement);
-                            scanIndex = i + 1;
-                            return true;
-                        }
-                    }
-                    else if (ch == quote)
-                    {
-                        quote = '\0';
-                    }
-
-                    i++;
-                }
-
-                break;
             }
 
-            tag = default;
-            return false;
-        }
+            int nameStart = i;
+            while (i < len && IsTagNameChar(html[i]))
+                i++;
 
-        private static bool IsTagNameChar(char c)
-            => char.IsLetterOrDigit(c) || c == '-' || c == ':' || c == '_';
-
-        private static bool TagHasAttributeMatch(ReadOnlySpan<char> tagSource, string attribute, string target, HtmlSpanTargetType targetType)
-        {
-            if (string.IsNullOrEmpty(attribute))
-                return false;
-
-            int i = 0;
-            while (i < tagSource.Length)
+            if (i == nameStart)
             {
-                while (i < tagSource.Length && !char.IsWhiteSpace(tagSource[i]))
-                    i++;
+                scanIndex = start + 1;
+                continue;
+            }
 
-                while (i < tagSource.Length && char.IsWhiteSpace(tagSource[i]))
-                    i++;
+            string tagName = html.Slice(nameStart, i - nameStart).ToString();
 
-                if (i >= tagSource.Length || tagSource[i] == '>' || tagSource[i] == '/')
-                    break;
+            char quote = '\0';
+            bool isEmptyElement = false;
 
-                int nameStart = i;
-                while (i < tagSource.Length && IsAttributeNameChar(tagSource[i]))
-                    i++;
-                if (i == nameStart)
+            while (i < len)
+            {
+                char ch = html[i];
+                if (quote == '\0')
                 {
-                    i++;
-                    continue;
+                    if (ch == '"' || ch == '\'')
+                    {
+                        quote = ch;
+                    }
+                    else if (ch == '>')
+                    {
+                        if (i > start && html[i - 1] == '/')
+                            isEmptyElement = true;
+
+                        tag = new ParsedTag(start, i + 1, tagName, isEndTag, isEmptyElement);
+                        scanIndex = i + 1;
+                        return true;
+                    }
+                }
+                else if (ch == quote)
+                {
+                    quote = '\0';
                 }
 
-                var attrName = tagSource.Slice(nameStart, i - nameStart);
+                i++;
+            }
 
+            break;
+        }
+
+        tag = default;
+        return false;
+    }
+
+    private static bool IsTagNameChar(char c)
+        => char.IsLetterOrDigit(c) || c == '-' || c == ':' || c == '_';
+
+    private static bool TagHasAttributeMatch(ReadOnlySpan<char> tagSource, string attribute, string target, HtmlSpanTargetType targetType)
+    {
+        if (string.IsNullOrEmpty(attribute))
+            return false;
+
+        int i = 0;
+        while (i < tagSource.Length)
+        {
+            while (i < tagSource.Length && !char.IsWhiteSpace(tagSource[i]))
+                i++;
+
+            while (i < tagSource.Length && char.IsWhiteSpace(tagSource[i]))
+                i++;
+
+            if (i >= tagSource.Length || tagSource[i] == '>' || tagSource[i] == '/')
+                break;
+
+            int nameStart = i;
+            while (i < tagSource.Length && IsAttributeNameChar(tagSource[i]))
+                i++;
+            if (i == nameStart)
+            {
+                i++;
+                continue;
+            }
+
+            var attrName = tagSource.Slice(nameStart, i - nameStart);
+
+            while (i < tagSource.Length && char.IsWhiteSpace(tagSource[i]))
+                i++;
+
+            ReadOnlySpan<char> attrValue = ReadOnlySpan<char>.Empty;
+            if (i < tagSource.Length && tagSource[i] == '=')
+            {
+                i++;
                 while (i < tagSource.Length && char.IsWhiteSpace(tagSource[i]))
                     i++;
 
-                ReadOnlySpan<char> attrValue = ReadOnlySpan<char>.Empty;
-                if (i < tagSource.Length && tagSource[i] == '=')
+                if (i < tagSource.Length && (tagSource[i] == '"' || tagSource[i] == '\''))
                 {
-                    i++;
-                    while (i < tagSource.Length && char.IsWhiteSpace(tagSource[i]))
+                    char quote = tagSource[i++];
+                    int valStart = i;
+                    while (i < tagSource.Length && tagSource[i] != quote)
                         i++;
-
-                    if (i < tagSource.Length && (tagSource[i] == '"' || tagSource[i] == '\''))
-                    {
-                        char quote = tagSource[i++];
-                        int valStart = i;
-                        while (i < tagSource.Length && tagSource[i] != quote)
-                            i++;
-                        attrValue = tagSource.Slice(valStart, Math.Max(0, i - valStart));
-                        if (i < tagSource.Length)
-                            i++;
-                    }
-                    else
-                    {
-                        int valStart = i;
-                        while (i < tagSource.Length && !char.IsWhiteSpace(tagSource[i]) && tagSource[i] != '>')
-                            i++;
-                        attrValue = tagSource.Slice(valStart, i - valStart);
-                    }
+                    attrValue = tagSource.Slice(valStart, Math.Max(0, i - valStart));
+                    if (i < tagSource.Length)
+                        i++;
                 }
-
-                if (attrName.Equals(attribute, StringComparison.OrdinalIgnoreCase))
+                else
                 {
-                    return targetType switch
-                    {
-                        HtmlSpanTargetType.Exact => attrValue.Equals(target, StringComparison.Ordinal),
-                        HtmlSpanTargetType.Contains => attrValue.IndexOf(target, StringComparison.Ordinal) >= 0,
-                        _ => false
-                    };
+                    int valStart = i;
+                    while (i < tagSource.Length && !char.IsWhiteSpace(tagSource[i]) && tagSource[i] != '>')
+                        i++;
+                    attrValue = tagSource.Slice(valStart, i - valStart);
                 }
             }
 
-            return false;
+            if (attrName.Equals(attribute, StringComparison.OrdinalIgnoreCase))
+            {
+                return targetType switch
+                {
+                    HtmlSpanTargetType.Exact => attrValue.Equals(target, StringComparison.Ordinal),
+                    HtmlSpanTargetType.Contains => attrValue.IndexOf(target, StringComparison.Ordinal) >= 0,
+                    _ => false
+                };
+            }
         }
 
-        private static bool IsAttributeNameChar(char c)
-            => char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == ':';
-
-        private static bool EqualsOrdinalIgnoreCase(string a, string b)
-            => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        return false;
     }
+
+    private static bool IsAttributeNameChar(char c)
+        => char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == ':';
+
+    private static bool EqualsOrdinalIgnoreCase(string a, string b)
+        => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }

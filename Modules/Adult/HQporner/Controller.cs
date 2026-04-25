@@ -7,71 +7,70 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace HQporner
+namespace HQporner;
+
+public class HQpornerController : BaseSisiController
 {
-    public class HQpornerController : BaseSisiController
+    static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
+
+    public HQpornerController() : base(ModInit.conf) { }
+
+    [HttpGet]
+    [Staticache]
+    [Route("hqr")]
+    async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1)
     {
-        static readonly HttpClient httpClient = FriendlyHttp.CreateHttpClient();
+        if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
+            return badInitMsg;
 
-        public HQpornerController() : base(ModInit.conf) { }
-
-        [HttpGet]
-        [Staticache]
-        [Route("hqr")]
-        async public Task<ActionResult> Index(string search, string sort, string c, int pg = 1)
+    rhubFallback:
+        var cache = await InvokeCacheResult($"hqr:{search}:{sort}:{c}:{pg}", 10, jsonContext.ListPlaylistItem, async e =>
         {
-            if (await IsRequestBlocked(rch: true, rch_keepalive: -1))
-                return badInitMsg;
+            if (init.httpversion == 1)
+                httpHydra.RegisterHttp(httpClient);
 
-            rhubFallback:
-            var cache = await InvokeCacheResult($"hqr:{search}:{sort}:{c}:{pg}", 10, jsonContext.ListPlaylistItem, async e =>
+            List<PlaylistItem> playlists = null;
+
+            await httpHydra.GetSpan(HQpornerTo.Uri(init.host, search, sort, c, pg), span =>
             {
-                if (init.httpversion == 1)
-                    httpHydra.RegisterHttp(httpClient);
-
-                List<PlaylistItem> playlists = null;
-
-                await httpHydra.GetSpan(HQpornerTo.Uri(init.host, search, sort, c, pg), span =>
-                {
-                    playlists = HQpornerTo.Playlist("hqr/vidosik", span);
-                });
-
-                if (playlists == null || playlists.Count == 0)
-                    return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
-
-                return e.Success(playlists);
+                playlists = HQpornerTo.Playlist("hqr/vidosik", span);
             });
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
+            if (playlists == null || playlists.Count == 0)
+                return e.Fail("playlists", refresh_proxy: string.IsNullOrEmpty(search));
 
-            return PlaylistResult(cache,
-                string.IsNullOrEmpty(search) ? HQpornerTo.Menu(host, sort, c) : null
-            );
-        }
+            return e.Success(playlists);
+        });
 
-        [HttpGet]
-        [Route("hqr/vidosik")]
-        async public Task<ActionResult> Index(string uri)
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
+
+        return PlaylistResult(cache,
+            string.IsNullOrEmpty(search) ? HQpornerTo.Menu(host, sort, c) : null
+        );
+    }
+
+    [HttpGet]
+    [Route("hqr/vidosik")]
+    async public Task<ActionResult> Index(string uri)
+    {
+        if (await IsRequestBlocked(rch: true))
+            return badInitMsg;
+
+    rhubFallback:
+        var cache = await InvokeCacheResult(ipkey($"HQporner:view:{uri}"), 20, jsonContext.DictionaryStringString, async e =>
         {
-            if (await IsRequestBlocked(rch: true))
-                return badInitMsg;
+            var stream_links = await HQpornerTo.StreamLinks(httpHydra, init.host, uri);
 
-            rhubFallback:
-            var cache = await InvokeCacheResult(ipkey($"HQporner:view:{uri}"), 20, jsonContext.DictionaryStringString, async e =>
-            {
-                var stream_links = await HQpornerTo.StreamLinks(httpHydra, init.host, uri);
+            if (stream_links == null || stream_links.Count == 0)
+                return e.Fail("stream_links", refresh_proxy: true);
 
-                if (stream_links == null || stream_links.Count == 0)
-                    return e.Fail("stream_links", refresh_proxy: true);
+            return e.Success(stream_links);
+        });
 
-                return e.Success(stream_links);
-            });
+        if (IsRhubFallback(cache))
+            goto rhubFallback;
 
-            if (IsRhubFallback(cache))
-                goto rhubFallback;
-
-            return OnResult(cache);
-        }
+        return OnResult(cache);
     }
 }

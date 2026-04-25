@@ -1,24 +1,23 @@
 ﻿using Shared.Models.Base;
 
-namespace Kinobase
+namespace Kinobase;
+
+public class ModuleConf : BaseSettings
 {
-    public class ModuleConf : BaseSettings
+    public ModuleConf(string plugin, string host, bool playerjs, bool hdr)
     {
-        public ModuleConf(string plugin, string host, bool playerjs, bool hdr)
-        {
-            enable = true;
-            this.plugin = plugin;
+        enable = true;
+        this.plugin = plugin;
 
-            if (host != null)
-                this.host = host.StartsWith("http") ? host : Decrypt(host);
+        if (host != null)
+            this.host = host.StartsWith("http") ? host : Decrypt(host);
 
-            this.playerjs = playerjs;
-            this.hdr = hdr;
-        }
-
-
-        public bool playerjs { get; set; }
-
-        public bool hdr { get; set; }
+        this.playerjs = playerjs;
+        this.hdr = hdr;
     }
+
+
+    public bool playerjs { get; set; }
+
+    public bool hdr { get; set; }
 }

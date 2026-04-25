@@ -8,71 +8,70 @@ using Shared.Services;
 using System.Collections.Generic;
 using Shared;
 
-namespace HDVB
+namespace HDVB;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
-
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf)
-            };
-        }
+            new(conf)
+        };
+    }
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        return new List<ModuleOnlineSpiderItem>()
         {
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf, "hdvb-search")
-            };
-        }
+            new(conf, "hdvb-search")
+        };
+    }
 
-        public void Loaded(InitspaceModel baseconf)
+    public void Loaded(InitspaceModel baseconf)
+    {
+        CoreInit.conf.online.with_search.Add("hdvb");
+
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("HDVB", new OnlinesSettings("HDVB", "https://vid1733431681.entouaedon.com", "https://apivb.com", token: "5e2fe4c70bafd9a7414c4f170ee1b192")
         {
-            CoreInit.conf.online.with_search.Add("hdvb");
+            displayindex = 560,
+            streamproxy = true,
+            rch_access = "apk",
+            stream_access = "apk,cors,web",
+            headers = HeadersModel.Init(Http.defaultFullHeaders,
+                ("referer", "encrypt:kwwsv=22prylhode1rqh2")
+            ).ToDictionary(),
+            headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
+                ("origin", "https://vid1733431681.entouaedon.com"),
+                ("referer", "https://vid1733431681.entouaedon.com/"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "same-site")
+            ).ToDictionary()
+        });
+    }
 
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser switch
         {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("HDVB", new OnlinesSettings("HDVB", "https://vid1733431681.entouaedon.com", "https://apivb.com", token: "5e2fe4c70bafd9a7414c4f170ee1b192")
-            {
-                displayindex = 560,
-                streamproxy = true,
-                rch_access = "apk",
-                stream_access = "apk,cors,web",
-                headers = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("referer", "encrypt:kwwsv=22prylhode1rqh2")
-                ).ToDictionary(),
-                headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("origin", "https://vid1733431681.entouaedon.com"),
-                    ("referer", "https://vid1733431681.entouaedon.com/"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "same-site")
-                ).ToDictionary()
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser switch
-            {
-                "hdvb" => " ~ 1080p",
-                _ => null
-            };
-        }
+            "hdvb" => " ~ 1080p",
+            _ => null
+        };
     }
 }

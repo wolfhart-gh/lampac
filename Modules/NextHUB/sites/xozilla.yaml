@@ -205,7 +205,7 @@ list:
   uri: latest-updates/{page}/
 
 search:
-  uri: search/{search}/{page}/
+  uri: search/anal/?mode=async&function=get_block&block_id=list_videos_videos_list_search_result&q=anal&category_ids=&sort_by=&from_videos={page}&from_albums={page}
 
 contentParse:
   nodes: //a[contains(@class,'item ')]

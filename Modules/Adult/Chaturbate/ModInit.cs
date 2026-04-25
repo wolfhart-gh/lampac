@@ -8,46 +8,45 @@ using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Chaturbate
+namespace Chaturbate;
+
+public class ModInit : IModuleLoaded, IModuleSisi
 {
-    public class ModInit : IModuleLoaded, IModuleSisi
+    public static SisiSettings conf;
+
+    public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
     {
-        public static SisiSettings conf;
-
-        public List<SisiModuleItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, SisiEventsModel args)
+        if (conf.priorityBrowser == "http" || conf.rhub || PlaywrightBrowser.Status != PlaywrightStatus.disabled || !string.IsNullOrEmpty(conf.overridehost) || conf.overridehosts?.Length > 0)
         {
-            if (conf.priorityBrowser == "http" || conf.rhub || PlaywrightBrowser.Status != PlaywrightStatus.disabled || !string.IsNullOrEmpty(conf.overridehost) || conf.overridehosts?.Length > 0)
+            return new List<SisiModuleItem>()
             {
-                return new List<SisiModuleItem>()
-                {
-                    new("chaturbate.com", conf, "chu")
-                };
-            }
-
-            return null;
+                new("chaturbate.com", conf, "chu")
+            };
         }
 
-        public void Loaded(InitspaceModel baseconf)
+        return null;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Chaturbate", new SisiSettings("Chaturbate", "https://chaturbate.com")
         {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Chaturbate", new SisiSettings("Chaturbate", "https://chaturbate.com")
-            {
-                spider = false,
-                httpversion = 2,
-                displayindex = 24,
-                rch_access = "apk,cors",
-                stream_access = "apk,cors,web"
-            });
-        }
+            spider = false,
+            httpversion = 2,
+            displayindex = 24,
+            rch_access = "apk,cors",
+            stream_access = "apk,cors,web"
+        });
     }
 }

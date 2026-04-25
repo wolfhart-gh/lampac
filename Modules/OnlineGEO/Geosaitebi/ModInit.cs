@@ -7,57 +7,56 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Geosaitebi
+namespace Geosaitebi;
+
+public class ModInit : IModuleLoaded, IModuleOnline
 {
-    public class ModInit : IModuleLoaded, IModuleOnline
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        var online = new List<ModuleOnlineItem>();
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        if (args.serial == -1 || args.serial == 0)
+            online.Add(new(conf, arg_title: " (Грузинский)"));
+
+        return online;
+    }
+
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
+
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Geosaitebi", new OnlinesSettings("Geosaitebi", "https://geosaitebi.tv", streamproxy: true)
         {
-            var online = new List<ModuleOnlineItem>();
+            displayindex = 905,
+            rch_access = "apk,cors",
+            stream_access = "apk",
+            rchstreamproxy = "web,cors",
+            headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
+                ("Origin", "https://geosaitebi.tv"),
+                ("referer", "https://geosaitebi.tv/"),
+                ("sec-fetch-dest", "empty"),
+                ("sec-fetch-mode", "cors"),
+                ("sec-fetch-site", "cross-site"),
+                ("accept", "*/*")
+            ).ToDictionary()
+        });
+    }
 
-            if (args.serial == -1 || args.serial == 0)
-                online.Add(new(conf, arg_title: " (Грузинский)"));
-
-            return online;
-        }
-
-        public void Loaded(InitspaceModel baseconf)
-        {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
-
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Geosaitebi", new OnlinesSettings("Geosaitebi", "https://geosaitebi.tv", streamproxy: true)
-            {
-                displayindex = 905,
-                rch_access = "apk,cors",
-                stream_access = "apk",
-                rchstreamproxy = "web,cors",
-                headers_stream = HeadersModel.Init(Http.defaultFullHeaders,
-                    ("Origin", "https://geosaitebi.tv"),
-                    ("referer", "https://geosaitebi.tv/"),
-                    ("sec-fetch-dest", "empty"),
-                    ("sec-fetch-mode", "cors"),
-                    ("sec-fetch-site", "cross-site"),
-                    ("accept", "*/*")
-                ).ToDictionary()
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "geosaitebi" ? " ~ 720p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "geosaitebi" ? " ~ 720p" : null;
     }
 }

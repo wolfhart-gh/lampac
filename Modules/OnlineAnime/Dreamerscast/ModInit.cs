@@ -7,61 +7,60 @@ using Shared.Models.Online.Settings;
 using Shared.Services;
 using System.Collections.Generic;
 
-namespace Dreamerscast
+namespace Dreamerscast;
+
+public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
-    public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
+    public static OnlinesSettings conf;
+
+    public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
-        public static OnlinesSettings conf;
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
+        return new List<ModuleOnlineItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf, "dreamerscast", "Dreamerscast")
+        };
+    }
 
-            return new List<ModuleOnlineItem>()
-            {
-                new(conf, "dreamerscast", "Dreamerscast")
-            };
-        }
+    public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+    {
+        if (!args.isanime)
+            return null;
 
-        public List<ModuleOnlineSpiderItem> Spider(HttpContext httpContext, RequestModel requestInfo, string host, OnlineSpiderModel args)
+        return new List<ModuleOnlineSpiderItem>()
         {
-            if (!args.isanime)
-                return null;
+            new(conf, "dreamerscast")
+        };
+    }
 
-            return new List<ModuleOnlineSpiderItem>()
-            {
-                new(conf, "dreamerscast")
-            };
-        }
+    public void Loaded(InitspaceModel baseconf)
+    {
+        updateConf();
+        EventListener.UpdateInitFile += updateConf;
+        EventListener.OnlineApiQuality += onlineApiQuality;
+    }
 
-        public void Loaded(InitspaceModel baseconf)
+    public void Dispose()
+    {
+        EventListener.UpdateInitFile -= updateConf;
+        EventListener.OnlineApiQuality -= onlineApiQuality;
+    }
+
+    void updateConf()
+    {
+        conf = ModuleInvoke.Init("Dreamerscast", new OnlinesSettings("Dreamerscast", "https://dreamerscast.com")
         {
-            updateConf();
-            EventListener.UpdateInitFile += updateConf;
-            EventListener.OnlineApiQuality += onlineApiQuality;
-        }
+            displayindex = 130,
+            rch_access = "apk",
+            stream_access = "apk,cors",
+            rchstreamproxy = "web"
+        });
+    }
 
-        public void Dispose()
-        {
-            EventListener.UpdateInitFile -= updateConf;
-            EventListener.OnlineApiQuality -= onlineApiQuality;
-        }
-
-        void updateConf()
-        {
-            conf = ModuleInvoke.Init("Dreamerscast", new OnlinesSettings("Dreamerscast", "https://dreamerscast.com")
-            {
-                displayindex = 130,
-                rch_access = "apk",
-                stream_access = "apk,cors",
-                rchstreamproxy = "web"
-            });
-        }
-
-        string onlineApiQuality(EventOnlineApiQuality e)
-        {
-            return e.balanser == "dreamerscast" ? " ~ 1080p" : null;
-        }
+    string onlineApiQuality(EventOnlineApiQuality e)
+    {
+        return e.balanser == "dreamerscast" ? " ~ 1080p" : null;
     }
 }

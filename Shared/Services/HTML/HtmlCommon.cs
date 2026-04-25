@@ -1,55 +1,54 @@
 ﻿using HtmlAgilityPack;
 using System.Text.RegularExpressions;
 
-namespace Shared.Services.HTML
+namespace Shared.Services.HTML;
+
+public class HtmlCommon
 {
-    public class HtmlCommon
+    HtmlNode row;
+
+    public HtmlCommon(HtmlNode row)
     {
-        HtmlNode row;
+        this.row = row;
+    }
 
-        public HtmlCommon(HtmlNode row)
+
+    public string NodeValue(string node, string attribute = null, string removeChild = null)
+    {
+        if (string.IsNullOrEmpty(node) && !string.IsNullOrEmpty(attribute))
         {
-            this.row = row;
+            return row.GetAttributeValue(attribute, null);
         }
-
-
-        public string NodeValue(string node, string attribute = null, string removeChild = null)
+        else
         {
-            if (string.IsNullOrEmpty(node) && !string.IsNullOrEmpty(attribute))
+            var inNode = row.SelectSingleNode(node);
+            if (inNode != null)
             {
-                return row.GetAttributeValue(attribute, null);
-            }
-            else
-            {
-                var inNode = row.SelectSingleNode(node);
-                if (inNode != null)
-                {
-                    if (removeChild != null)
-                        inNode.RemoveChild(inNode.SelectSingleNode(removeChild));
+                if (removeChild != null)
+                    inNode.RemoveChild(inNode.SelectSingleNode(removeChild));
 
-                    return (!string.IsNullOrEmpty(attribute) ? inNode.GetAttributeValue(attribute, null) : inNode.InnerText)?.Trim();
-                }
+                return (!string.IsNullOrEmpty(attribute) ? inNode.GetAttributeValue(attribute, null) : inNode.InnerText)?.Trim();
             }
-
-            return null;
         }
 
-
-        public string Match(string pattern, int index = 1)
-        {
-            return new Regex(pattern, RegexOptions.IgnoreCase).Match(row.InnerHtml).Groups[index].Value.Trim();
-        }
+        return null;
+    }
 
 
-        public static int Integer(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return 0;
+    public string Match(string pattern, int index = 1)
+    {
+        return new Regex(pattern, RegexOptions.IgnoreCase).Match(row.InnerHtml).Groups[index].Value.Trim();
+    }
 
-            if (int.TryParse(Regex.Replace(value, "[^0-9]+", ""), out int result))
-                return result;
 
+    public static int Integer(string value)
+    {
+        if (string.IsNullOrEmpty(value))
             return 0;
-        }
+
+        if (int.TryParse(Regex.Replace(value, "[^0-9]+", ""), out int result))
+            return result;
+
+        return 0;
     }
 }

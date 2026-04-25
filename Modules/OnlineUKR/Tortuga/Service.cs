@@ -11,198 +11,197 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace Tortuga
+namespace Tortuga;
+
+public struct TortugaInvoke
 {
-    public struct TortugaInvoke
+    #region TortugaInvoke
+    string host;
+    HttpHydra http;
+    Func<string, string> onstreamfile;
+
+    public TortugaInvoke(string host, HttpHydra httpHydra, Func<string, string> onstreamfile)
     {
-        #region TortugaInvoke
-        string host;
-        HttpHydra http;
-        Func<string, string> onstreamfile;
+        this.host = host != null ? $"{host}/" : null;
+        http = httpHydra;
+        this.onstreamfile = onstreamfile;
+    }
+    #endregion
 
-        public TortugaInvoke(string host, HttpHydra httpHydra, Func<string, string> onstreamfile)
+    #region Embed
+    public async Task<EmbedModel> Embed(string iframeUri)
+    {
+        var result = new EmbedModel();
+
+        await http.GetSpan(iframeUri, content =>
         {
-            this.host = host != null ? $"{host}/" : null;
-            http = httpHydra;
-            this.onstreamfile = onstreamfile;
-        }
-        #endregion
+            if (!content.Contains("file:", StringComparison.Ordinal))
+                return;
 
-        #region Embed
-        public async Task<EmbedModel> Embed(string iframeUri)
-        {
-            var result = new EmbedModel();
-
-            await http.GetSpan(iframeUri, content =>
+            if (Regex.IsMatch(content, "file: ?'"))
             {
-                if (!content.Contains("file:", StringComparison.Ordinal))
-                    return;
-
-                if (Regex.IsMatch(content, "file: ?'"))
+                try
                 {
-                    try
+                    string file = Rx.Match(content, "file: ?'([^\n\r]+)',");
+                    if (file.EndsWith("=="))
                     {
-                        string file = Rx.Match(content, "file: ?'([^\n\r]+)',");
-                        if (file.EndsWith("=="))
-                        {
-                            file = Regex.Replace(file, "==$", "");
-                            file = string.Join("", CrypTo.DecodeBase64(file).Reverse());
-                        }
-
-                        var root = JsonSerializer.Deserialize<List<Voice>>(file, new JsonSerializerOptions
-                        {
-                            AllowTrailingCommas = true
-                        });
-
-                        if (root != null && root.Count > 0)
-                            result.serial = root;
+                        file = Regex.Replace(file, "==$", "");
+                        file = string.Join("", CrypTo.DecodeBase64(file).Reverse());
                     }
-                    catch (System.Exception ex)
+
+                    var root = JsonSerializer.Deserialize<List<Voice>>(file, new JsonSerializerOptions
                     {
-                        Serilog.Log.Error(ex, "{Class} {CatchId}", "Tortuga", "id_frqb3um1");
-                    }
+                        AllowTrailingCommas = true
+                    });
+
+                    if (root != null && root.Count > 0)
+                        result.serial = root;
                 }
-                else
+                catch (System.Exception ex)
                 {
-                    result.content = content.ToString();
+                    Serilog.Log.Error(ex, "{Class} {CatchId}", "Tortuga", "id_frqb3um1");
                 }
-            });
-
-            if (string.IsNullOrEmpty(result.content) && result.serial == null)
-                return null;
-
-            return result;
-        }
-        #endregion
-
-        #region Tpl
-        public ITplResult Tpl(EmbedModel result, string title, string original_title, string t, int s, string uri, VastConf vast = null, bool rjson = false)
-        {
-            if (result == null || result.IsEmpty)
-                return default;
-
-            string enc_title = HttpUtility.UrlEncode(title);
-            string enc_original_title = HttpUtility.UrlEncode(original_title);
-            string enc_uri = HttpUtility.UrlEncode(uri);
-
-            if (result.content != null)
-            {
-                #region Фильм
-                var mtpl = new MovieTpl(title, original_title, 1);
-
-                string hls = Regex.Match(result.content, "file: ?(\"|')(?<hls>https?://[^\"']+/index\\.m3u8)(\"|')").Groups["hls"].Value;
-                if (string.IsNullOrWhiteSpace(hls))
-                {
-                    string base64 = Regex.Match(result.content, "file: ?(\"|')(?<base64>[^\"']+)(\"|')").Groups["base64"].Value;
-                    base64 = Regex.Replace(base64, "==$", "");
-
-                    hls = string.Join("", CrypTo.DecodeBase64(base64).Reverse());
-
-                    if (string.IsNullOrWhiteSpace(hls))
-                        return default;
-                }
-
-                #region subtitle
-                var subtitles = new SubtitleTpl();
-                string subtitle = new Regex("\"subtitle\": ?\"([^\"]+)\"").Match(result.content).Groups[1].Value;
-
-                if (!string.IsNullOrEmpty(subtitle))
-                {
-                    var match = new Regex("\\[([^\\]]+)\\](https?://[^\\,]+)").Match(subtitle);
-                    while (match.Success)
-                    {
-                        subtitles.Append(match.Groups[1].Value, onstreamfile.Invoke(match.Groups[2].Value));
-                        match = match.NextMatch();
-                    }
-                }
-                #endregion
-
-                mtpl.Append("По умолчанию", onstreamfile.Invoke(hls), subtitles: subtitles, vast: vast);
-
-                return mtpl;
-                #endregion
             }
             else
             {
-                #region Сериал
-                try
+                result.content = content.ToString();
+            }
+        });
+
+        if (string.IsNullOrEmpty(result.content) && result.serial == null)
+            return null;
+
+        return result;
+    }
+    #endregion
+
+    #region Tpl
+    public ITplResult Tpl(EmbedModel result, string title, string original_title, string t, int s, string uri, VastConf vast = null, bool rjson = false)
+    {
+        if (result == null || result.IsEmpty)
+            return default;
+
+        string enc_title = HttpUtility.UrlEncode(title);
+        string enc_original_title = HttpUtility.UrlEncode(original_title);
+        string enc_uri = HttpUtility.UrlEncode(uri);
+
+        if (result.content != null)
+        {
+            #region Фильм
+            var mtpl = new MovieTpl(title, original_title, 1);
+
+            string hls = Regex.Match(result.content, "file: ?(\"|')(?<hls>https?://[^\"']+/index\\.m3u8)(\"|')").Groups["hls"].Value;
+            if (string.IsNullOrWhiteSpace(hls))
+            {
+                string base64 = Regex.Match(result.content, "file: ?(\"|')(?<base64>[^\"']+)(\"|')").Groups["base64"].Value;
+                base64 = Regex.Replace(base64, "==$", "");
+
+                hls = string.Join("", CrypTo.DecodeBase64(base64).Reverse());
+
+                if (string.IsNullOrWhiteSpace(hls))
+                    return default;
+            }
+
+            #region subtitle
+            var subtitles = new SubtitleTpl();
+            string subtitle = new Regex("\"subtitle\": ?\"([^\"]+)\"").Match(result.content).Groups[1].Value;
+
+            if (!string.IsNullOrEmpty(subtitle))
+            {
+                var match = new Regex("\\[([^\\]]+)\\](https?://[^\\,]+)").Match(subtitle);
+                while (match.Success)
                 {
-                    if (s == -1)
+                    subtitles.Append(match.Groups[1].Value, onstreamfile.Invoke(match.Groups[2].Value));
+                    match = match.NextMatch();
+                }
+            }
+            #endregion
+
+            mtpl.Append("По умолчанию", onstreamfile.Invoke(hls), subtitles: subtitles, vast: vast);
+
+            return mtpl;
+            #endregion
+        }
+        else
+        {
+            #region Сериал
+            try
+            {
+                if (s == -1)
+                {
+                    #region Сезоны
+                    var tpl = new SeasonTpl();
+
+                    foreach (var season in result.serial)
                     {
-                        #region Сезоны
-                        var tpl = new SeasonTpl();
+                        string link = host + $"lite/tortuga?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&uri={enc_uri}&s={season.season}";
 
-                        foreach (var season in result.serial)
-                        {
-                            string link = host + $"lite/tortuga?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&uri={enc_uri}&s={season.season}";
-
-                            tpl.Append(season.title, link, season.season);
-                        }
-
-                        return tpl;
-                        #endregion
+                        tpl.Append(season.title, link, season.season);
                     }
-                    else
+
+                    return tpl;
+                    #endregion
+                }
+                else
+                {
+                    string sArhc = s.ToString();
+                    var episodes = result.serial.First(i => i.season == sArhc).folder;
+
+                    #region Перевод
+                    var vtpl = new VoiceTpl();
+                    var hashVoice = new HashSet<string>(20);
+
+                    foreach (var episode in episodes)
                     {
-                        string sArhc = s.ToString();
-                        var episodes = result.serial.First(i => i.season == sArhc).folder;
-
-                        #region Перевод
-                        var vtpl = new VoiceTpl();
-                        var hashVoice = new HashSet<string>(20);
-
-                        foreach (var episode in episodes)
+                        foreach (var voice in episode.folder)
                         {
-                            foreach (var voice in episode.folder)
-                            {
-                                if (!hashVoice.Add(voice.title))
-                                    continue;
-
-                                if (string.IsNullOrEmpty(t))
-                                    t = voice.title;
-
-                                string link = host + $"lite/tortuga?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&uri={enc_uri}&s={s}&t={voice.title}";
-                                vtpl.Append(voice.title, t == voice.title, link);
-                            }
-                        }
-                        #endregion
-
-                        var etpl = new EpisodeTpl(vtpl, episodes.Length);
-
-                        foreach (var episode in episodes)
-                        {
-                            var video = episode.folder.FirstOrDefault(i => i.title == t);
-                            if (video?.file == null)
+                            if (!hashVoice.Add(voice.title))
                                 continue;
 
-                            #region subtitle
-                            var subtitles = new SubtitleTpl();
+                            if (string.IsNullOrEmpty(t))
+                                t = voice.title;
 
-                            if (!string.IsNullOrEmpty(video.subtitle))
-                            {
-                                var match = new Regex("\\[([^\\]]+)\\](https?://[^\\,]+)").Match(video.subtitle);
-                                while (match.Success)
-                                {
-                                    subtitles.Append(match.Groups[1].Value, onstreamfile.Invoke(match.Groups[2].Value));
-                                    match = match.NextMatch();
-                                }
-                            }
-                            #endregion
-
-                            string file = onstreamfile.Invoke(video.file);
-                            etpl.Append(episode.title, title ?? original_title, sArhc, episode.number, file, subtitles: subtitles, vast: vast);
+                            string link = host + $"lite/tortuga?rjson={rjson}&title={enc_title}&original_title={enc_original_title}&uri={enc_uri}&s={s}&t={voice.title}";
+                            vtpl.Append(voice.title, t == voice.title, link);
                         }
-
-                        return etpl;
                     }
+                    #endregion
+
+                    var etpl = new EpisodeTpl(vtpl, episodes.Length);
+
+                    foreach (var episode in episodes)
+                    {
+                        var video = episode.folder.FirstOrDefault(i => i.title == t);
+                        if (video?.file == null)
+                            continue;
+
+                        #region subtitle
+                        var subtitles = new SubtitleTpl();
+
+                        if (!string.IsNullOrEmpty(video.subtitle))
+                        {
+                            var match = new Regex("\\[([^\\]]+)\\](https?://[^\\,]+)").Match(video.subtitle);
+                            while (match.Success)
+                            {
+                                subtitles.Append(match.Groups[1].Value, onstreamfile.Invoke(match.Groups[2].Value));
+                                match = match.NextMatch();
+                            }
+                        }
+                        #endregion
+
+                        string file = onstreamfile.Invoke(video.file);
+                        etpl.Append(episode.title, title ?? original_title, sArhc, episode.number, file, subtitles: subtitles, vast: vast);
+                    }
+
+                    return etpl;
                 }
-                catch
-                {
-                    return default;
-                }
-                #endregion
             }
+            catch
+            {
+                return default;
+            }
+            #endregion
         }
-        #endregion
     }
+    #endregion
 }

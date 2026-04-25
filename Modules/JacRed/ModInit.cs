@@ -85,7 +85,7 @@ namespace JacRed
             conf = ModuleInvoke.Init("JacRed", new JacRedConf()
             {
                 typesearch = "webapi",
-                webApiHost = "http://jac.red",
+                webApiHost = "http://ns3bg91xvuqfvq9h.cfhttp.top",
                 merge = null,
                 disableJackett = true,
                 limit_map = new List<WafLimitRootMap>()

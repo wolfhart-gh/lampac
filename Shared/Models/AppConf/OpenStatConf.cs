@@ -1,7 +1,6 @@
-﻿namespace Shared.Models.AppConf
+﻿namespace Shared.Models.AppConf;
+
+public class OpenStatConf
 {
-    public class OpenStatConf
-    {
-        public bool enable { get; set; }
-    }
+    public bool enable { get; set; }
 }

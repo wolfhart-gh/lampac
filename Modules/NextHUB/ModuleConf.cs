@@ -1,7 +1,6 @@
-namespace NextHUB
+namespace NextHUB;
+
+public class ModuleConf
 {
-    public class ModuleConf
-    {
-        public string sites_enabled { get; set; }
-    }
+    public string sites_enabled { get; set; }
 }
