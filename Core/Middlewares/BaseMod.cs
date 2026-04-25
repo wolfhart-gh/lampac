@@ -8,224 +8,223 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Core.Middlewares
+namespace Core.Middlewares;
+
+public class BaseMod
 {
-    public class BaseMod
+    private readonly RequestDelegate _next;
+
+    public BaseMod(RequestDelegate next)
     {
-        private readonly RequestDelegate _next;
+        _next = next;
+    }
 
-        public BaseMod(RequestDelegate next)
-        {
-            _next = next;
-        }
+    public Task Invoke(HttpContext context)
+    {
+        if (CoreInit.conf.openstat.enable)
+            RequestInfoStats.Increment("base");
 
-        public Task Invoke(HttpContext context)
+        if (CoreInit.conf.BaseModule.BlockedBots && IsBlockedUserAgent(context.Request.Headers.UserAgent))
         {
             if (CoreInit.conf.openstat.enable)
-                RequestInfoStats.Increment("base");
+                RequestInfoStats.Increment("bot");
 
-            if (CoreInit.conf.BaseModule.BlockedBots && IsBlockedUserAgent(context.Request.Headers.UserAgent))
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+
+        if (HttpMethods.IsOptions(context.Request.Method))
+            return _next(context);
+
+        if (!HttpMethods.IsGet(context.Request.Method) &&
+            !HttpMethods.IsPost(context.Request.Method))
+            return Task.CompletedTask;
+
+        if (!CoreInit.conf.BaseModule.ValidateRequest)
+            return _next(context);
+
+        if (!IsValidPath(context.Request.Path.Value))
+        {
+            context.Response.StatusCode = 400;
+            return Task.CompletedTask;
+        }
+
+        var builder = new QueryBuilder();
+        var dict = new Dictionary<string, StringValues>(StringComparer.OrdinalIgnoreCase);
+
+        var sbQuery = StringBuilderPool.ThreadInstance;
+
+        foreach (var q in context.Request.Query)
+        {
+            if (IsValidQueryName(q.Key))
             {
-                if (CoreInit.conf.openstat.enable)
-                    RequestInfoStats.Increment("bot");
+                string val = ValidQueryValue(sbQuery, q.Key, q.Value);
 
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return Task.CompletedTask;
+                if (dict.TryAdd(q.Key, val))
+                    builder.Add(q.Key, val);
             }
-
-            if (HttpMethods.IsOptions(context.Request.Method))
-                return _next(context);
-
-            if (!HttpMethods.IsGet(context.Request.Method) &&
-                !HttpMethods.IsPost(context.Request.Method))
-                return Task.CompletedTask;
-
-            if (!CoreInit.conf.BaseModule.ValidateRequest)
-                return _next(context);
-
-            if (!IsValidPath(context.Request.Path.Value))
+            else
             {
                 context.Response.StatusCode = 400;
                 return Task.CompletedTask;
             }
-
-            var builder = new QueryBuilder();
-            var dict = new Dictionary<string, StringValues>(StringComparer.OrdinalIgnoreCase);
-
-            var sbQuery = StringBuilderPool.ThreadInstance;
-
-            foreach (var q in context.Request.Query)
-            {
-                if (IsValidQueryName(q.Key))
-                {
-                    string val = ValidQueryValue(sbQuery, q.Key, q.Value);
-
-                    if (dict.TryAdd(q.Key, val))
-                        builder.Add(q.Key, val);
-                }
-                else
-                {
-                    context.Response.StatusCode = 400;
-                    return Task.CompletedTask;
-                }
-            }
-
-            context.Request.QueryString = builder.ToQueryString();
-            context.Request.Query = new QueryCollection(dict);
-
-            return _next(context);
         }
 
-        #region IsValid
-        static bool IsValidPath(ReadOnlySpan<char> path)
+        context.Request.QueryString = builder.ToQueryString();
+        context.Request.Query = new QueryCollection(dict);
+
+        return _next(context);
+    }
+
+    #region IsValid
+    static bool IsValidPath(ReadOnlySpan<char> path)
+    {
+        if (path.IsEmpty)
+            return false;
+
+        foreach (var whitePath in CoreInit.BaseModPathWhiteList)
         {
-            if (path.IsEmpty)
-                return false;
-
-            foreach (var whitePath in CoreInit.BaseModPathWhiteList)
-            {
-                if (path.StartsWith(whitePath, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            foreach (char ch in path)
-            {
-                if (
-                    ch == '/' || ch == '-' || ch == '.' || ch == '_' ||
-                    ch == ':' || ch == '+' || ch == '=' ||
-                    (ch >= 'A' && ch <= 'Z') ||
-                    (ch >= 'a' && ch <= 'z') ||
-                    (ch >= '0' && ch <= '9')
-                )
-                {
-                    continue;
-                }
-
-                return false;
-            }
-
-            return true;
+            if (path.StartsWith(whitePath, StringComparison.OrdinalIgnoreCase))
+                return true;
         }
 
-
-        static bool IsValidQueryName(ReadOnlySpan<char> path)
+        foreach (char ch in path)
         {
-            if (path.IsEmpty)
-                return false;
-
-            foreach (char ch in path)
+            if (
+                ch == '/' || ch == '-' || ch == '.' || ch == '_' ||
+                ch == ':' || ch == '+' || ch == '=' ||
+                (ch >= 'A' && ch <= 'Z') ||
+                (ch >= 'a' && ch <= 'z') ||
+                (ch >= '0' && ch <= '9')
+            )
             {
-                if (
-                    ch == '-' || ch == '_' ||
-                    (ch >= 'A' && ch <= 'Z') ||
-                    (ch >= 'a' && ch <= 'z') ||
-                    (ch >= '0' && ch <= '9') ||
-                    ch == '[' || ch == ']' ||
-                    ch == '.' // tmdb
-                )
-                {
-                    continue;
-                }
-
-                return false;
+                continue;
             }
 
-            return true;
+            return false;
         }
 
-        static string ValidQueryValue(StringBuilder sb, string name, StringValues values)
+        return true;
+    }
+
+
+    static bool IsValidQueryName(ReadOnlySpan<char> path)
+    {
+        if (path.IsEmpty)
+            return false;
+
+        foreach (char ch in path)
         {
-            if (values.Count == 0)
-                return string.Empty;
+            if (
+                ch == '-' || ch == '_' ||
+                (ch >= 'A' && ch <= 'Z') ||
+                (ch >= 'a' && ch <= 'z') ||
+                (ch >= '0' && ch <= '9') ||
+                ch == '[' || ch == ']' ||
+                ch == '.' // tmdb
+            )
+            {
+                continue;
+            }
 
-            string value = values[0];
+            return false;
+        }
 
-            if (string.IsNullOrEmpty(value))
-                return string.Empty;
+        return true;
+    }
 
-            if (CoreInit.BaseModValidQueryValueWhiteList.Contains(name))
-                return value;
+    static string ValidQueryValue(StringBuilder sb, string name, StringValues values)
+    {
+        if (values.Count == 0)
+            return string.Empty;
 
-            sb.Clear();
+        string value = values[0];
 
-            foreach (char ch in value)
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        if (CoreInit.BaseModValidQueryValueWhiteList.Contains(name))
+            return value;
+
+        sb.Clear();
+
+        foreach (char ch in value)
+        {
+            if (
+                ch == '/' || ch == ':' || ch == '?' || ch == '&' || ch == '=' || ch == '.' || // ссылки
+                ch == '-' || ch == '_' || ch == ' ' || ch == ',' || // base
+                (ch >= '0' && ch <= '9') ||
+                ch == '@' || // email
+                ch == '+' || // aes
+                ch == '*' || // merchant
+                ch == '|' || // tmdb
+                char.IsLetter(ch) // ← любые буквы Unicode
+            )
+            {
+                sb.Append(ch);
+                continue;
+            }
+
+            if (name is "search" or "title" or "original_title" or "t")
             {
                 if (
-                    ch == '/' || ch == ':' || ch == '?' || ch == '&' || ch == '=' || ch == '.' || // ссылки
-                    ch == '-' || ch == '_' || ch == ' ' || ch == ',' || // base
-                    (ch >= '0' && ch <= '9') ||
-                    ch == '@' || // email
-                    ch == '+' || // aes
-                    ch == '*' || // merchant
-                    ch == '|' || // tmdb
-                    char.IsLetter(ch) // ← любые буквы Unicode
+                    char.IsDigit(ch) || // ← символ цифрой Unicode
+                    ch == '\'' || ch == '!' || ch == ',' || ch == '+' || ch == '~' || ch == '"' || ch == ';' ||
+                    ch == '(' || ch == ')' || ch == '[' || ch == ']' || ch == '{' || ch == '}' || ch == '«' || ch == '»' || ch == '“' || ch == '”' ||
+                    ch == '$' || ch == '%' || ch == '^' || ch == '#' || ch == '×'
                 )
                 {
                     sb.Append(ch);
                     continue;
                 }
-
-                if (name is "search" or "title" or "original_title" or "t")
-                {
-                    if (
-                        char.IsDigit(ch) || // ← символ цифрой Unicode
-                        ch == '\'' || ch == '!' || ch == ',' || ch == '+' || ch == '~' || ch == '"' || ch == ';' ||
-                        ch == '(' || ch == ')' || ch == '[' || ch == ']' || ch == '{' || ch == '}' || ch == '«' || ch == '»' || ch == '“' || ch == '”' ||
-                        ch == '$' || ch == '%' || ch == '^' || ch == '#' || ch == '×'
-                    )
-                    {
-                        sb.Append(ch);
-                        continue;
-                    }
-                }
             }
-
-            return sb.ToString();
         }
-        #endregion
 
-        #region BlockedUserAgent
-        static readonly string[] BlockedUserAgentPatterns =
-        {
-            // Search bots
-            "googlebot",
-            "adsbot-google",
-            "mediapartners-google",
-            "bingbot",
-            "yandex",
-            "baiduspider",
-            "duckduckbot",
-            "slurp",
-            "sogou",
-            "petalbot",
-
-            // AI bots
-            "gptbot",
-            "chatgpt-user",
-            "claudebot",
-            "anthropic-ai",
-            "ccbot",
-            "perplexitybot",
-            "bytespider",
-            "amazonbot",
-            "cohere-ai",
-            "imagesiftbot",
-            "ai2bot"
-        };
-
-        static bool IsBlockedUserAgent(StringValues userAgent)
-        {
-            if (userAgent.Count == 0)
-                return false;
-
-            foreach (var pattern in BlockedUserAgentPatterns)
-            {
-                if (userAgent[0].Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            return false;
-        }
-        #endregion
+        return sb.ToString();
     }
+    #endregion
+
+    #region BlockedUserAgent
+    static readonly string[] BlockedUserAgentPatterns =
+    {
+        // Search bots
+        "googlebot",
+        "adsbot-google",
+        "mediapartners-google",
+        "bingbot",
+        "yandex",
+        "baiduspider",
+        "duckduckbot",
+        "slurp",
+        "sogou",
+        "petalbot",
+
+        // AI bots
+        "gptbot",
+        "chatgpt-user",
+        "claudebot",
+        "anthropic-ai",
+        "ccbot",
+        "perplexitybot",
+        "bytespider",
+        "amazonbot",
+        "cohere-ai",
+        "imagesiftbot",
+        "ai2bot"
+    };
+
+    static bool IsBlockedUserAgent(StringValues userAgent)
+    {
+        if (userAgent.Count == 0)
+            return false;
+
+        foreach (var pattern in BlockedUserAgentPatterns)
+        {
+            if (userAgent[0].Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+    #endregion
 }

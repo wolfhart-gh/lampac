@@ -3,45 +3,44 @@ using Shared;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Core.Middlewares
+namespace Core.Middlewares;
+
+public class LimitHttpRequests
 {
-    public class LimitHttpRequests
+    private static int _activeHttpRequests;
+    public static int ActiveHttpRequests
+        => Volatile.Read(ref _activeHttpRequests);
+
+    private readonly RequestDelegate _next;
+
+    public LimitHttpRequests(RequestDelegate next)
     {
-        private static int _activeHttpRequests;
-        public static int ActiveHttpRequests
-            => Volatile.Read(ref _activeHttpRequests);
+        _next = next;
+    }
 
-        private readonly RequestDelegate _next;
+    public async Task InvokeAsync(HttpContext context)
+    {
+        if (context.RequestAborted.IsCancellationRequested)
+            return;
 
-        public LimitHttpRequests(RequestDelegate next)
+        if (CoreInit.conf.listen.LimitHttpRequests > 0)
         {
-            _next = next;
+            if (_activeHttpRequests >= CoreInit.conf.listen.LimitHttpRequests)
+            {
+                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                return;
+            }
         }
 
-        public async Task InvokeAsync(HttpContext context)
+        Interlocked.Increment(ref _activeHttpRequests);
+
+        try
         {
-            if (context.RequestAborted.IsCancellationRequested)
-                return;
-
-            if (CoreInit.conf.listen.LimitHttpRequests > 0)
-            {
-                if (_activeHttpRequests >= CoreInit.conf.listen.LimitHttpRequests)
-                {
-                    context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                    return;
-                }
-            }
-
-            Interlocked.Increment(ref _activeHttpRequests);
-
-            try
-            {
-                await _next(context);
-            }
-            finally
-            {
-                Interlocked.Decrement(ref _activeHttpRequests);
-            }
+            await _next(context);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeHttpRequests);
         }
     }
 }
