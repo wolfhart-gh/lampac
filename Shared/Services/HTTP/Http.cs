@@ -313,10 +313,19 @@ public static class Http
             {
                 using (HttpResponseMessage response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false))
                 {
-                    string location = (int)response.StatusCode == 301 || (int)response.StatusCode == 302 || (int)response.StatusCode == 307 ? response.Headers.Location?.ToString() : response.RequestMessage.RequestUri?.ToString();
-                    location = Uri.EscapeUriString(System.Web.HttpUtility.UrlDecode(location ?? ""));
+                    string location = (int)response.StatusCode == 301 || (int)response.StatusCode == 302 || (int)response.StatusCode == 307
+                        ? response.Headers.Location?.ToString()
+                        : response.RequestMessage.RequestUri?.ToString();
 
-                    return string.IsNullOrWhiteSpace(location) ? null : location;
+                    if (string.IsNullOrEmpty(location))
+                        return null;
+
+                    location = System.Web.HttpUtility.UrlDecode(location);
+
+                    if (Uri.TryCreate(location, UriKind.Absolute, out var uri))
+                        return uri.AbsoluteUri;
+
+                    return location;
                 }
             }
         }
