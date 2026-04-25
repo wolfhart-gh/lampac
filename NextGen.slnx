@@ -110,6 +110,7 @@
     <Project Path="Modules/OnlineUKR/HdvbUA/HdvbUA.csproj" />
     <Project Path="Modules/OnlineUKR/KinoUkr/KinoUkr.csproj" />
     <Project Path="Modules/OnlineUKR/Tortuga/Tortuga.csproj" />
+    <Project Path="Modules/OnlineUKR/UAFilm/UAFilm.csproj" />
     <Project Path="Modules/OnlineUKR/UaKino/UaKino.csproj" />
   </Folder>
   <Folder Name="/Modules/Proxy/">
