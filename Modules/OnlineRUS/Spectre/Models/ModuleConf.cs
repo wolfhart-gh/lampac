@@ -20,4 +20,8 @@ public class ModuleConf : BaseSettings
     public string linkhost { get; set; }
 
     public bool m4s { get; set; }
+
+    public bool mux { get; set; }
+
+    public bool debug { get; set; }
 }

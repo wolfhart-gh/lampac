@@ -4,18 +4,13 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Models.Base;
-using Shared.Models.Events;
 using Shared.Models.Templates;
 using Shared.PlaywrightCore;
-using Shared.Services;
 using Shared.Services.RxEnumerate;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.WebSockets;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -23,122 +18,6 @@ namespace Spectre;
 
 public class SpectreController : BaseOnlineController<ModuleConf>
 {
-    static ClientWebSocket ws;
-    static CancellationTokenSource wscts;
-    static DateTime lastreq;
-    static Timer timer;
-    static string edge_hash, resolution, requestOrigin, requestReferer;
-    static int current_time = 0, last_time = 0;
-    static readonly object last_time_lock = new(), resolution_lock = new();
-
-    static SpectreController()
-    {
-        timer = new Timer(_ =>
-        {
-            if (ws != null && lastreq != default && DateTime.Now.AddMinutes(-15) > lastreq)
-            {
-                ClearConnect();
-            }
-        }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(1));
-
-        EventListener.ProxyApiCreateHttpRequest += async e =>
-        {
-            if (e.plugin != null && e.plugin.Equals("spectre", StringComparison.OrdinalIgnoreCase))
-            {
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-
-                while (edge_hash == null && sw.Elapsed < TimeSpan.FromSeconds(20))
-                    await Task.Delay(10);
-
-                if (edge_hash == null)
-                    return;
-
-                lastreq = DateTime.Now;
-
-                #region resolution
-                if (e.decryptLink.userdata != null)
-                {
-                    bool sendResolution = false;
-
-                    lock (resolution_lock)
-                    {
-                        string quality = e.decryptLink.userdata.ToString();
-                        if (quality != resolution)
-                        {
-                            resolution = quality;
-                            sendResolution = true;
-                        }
-                    }
-
-                    if (sendResolution)
-                    {
-                        Console.WriteLine("resolution: " + resolution);
-                        await WsSendAsync("playback_start");
-                        await Task.Delay(1000);
-                    }
-                }
-                #endregion
-
-                #region current_time
-                string segId = Regex.Match(e.requestMessage.RequestUri.ToString(), "/seg-([0-9]+)-").Groups[1].Value;
-                int seg = int.TryParse(segId, out int s) ? s : 0;
-
-                if (25 >= seg)
-                {
-                    current_time = 0;
-                    last_time = 0;
-                }
-                else
-                {
-                    bool sendSeeked = false;
-
-                    lock (last_time_lock)
-                    {
-                        current_time = (seg - 25) * 6;
-                        if (last_time == 0)
-                            last_time = current_time;
-
-                        if ((current_time - last_time) > 90)
-                            sendSeeked = true;
-
-                        last_time = current_time;
-                    }
-
-                    if (sendSeeked)
-                    {
-                        Console.WriteLine("seeked: " + current_time);
-                        await WsSendAsync("seeked");
-                        await Task.Delay(1000);
-                    }
-                }
-                #endregion
-
-                #region requestMessage
-                e.requestMessage.Headers.Clear();
-
-                e.requestMessage.Headers.TryAddWithoutValidation("Connection", "keep-alive");
-                e.requestMessage.Headers.TryAddWithoutValidation("sec-ch-ua", Http.defaultUaHeaders["sec-ch-ua"]);
-                e.requestMessage.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
-                e.requestMessage.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
-                e.requestMessage.Headers.TryAddWithoutValidation("User-Agent", Http.UserAgent);
-                e.requestMessage.Headers.TryAddWithoutValidation("Accept", "*/*");
-                e.requestMessage.Headers.TryAddWithoutValidation("Accept-Language", "ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5");
-                e.requestMessage.Headers.TryAddWithoutValidation("Accepts-Controls", edge_hash);
-                e.requestMessage.Headers.TryAddWithoutValidation("Authorizations", "Bearer pXzvbyDGLYyB6VkwsWZDv3iMKZtsXNzpzRyxZUcsKHXxsSeaYakbo3hw9mBFRc5VQTpqAX6BW8aDEqyLaHYcXSQiV6KHYTVTK6MYRphNAy5sBjtrevqkDzKmLqNdfMZGEU9NELjmtKfZy3RNGzCd767sNh1mXEj4tCcvqndHtzmwAbZNkhm4ghDEasodotMBewypNQ56uotJAQGX11csfeRfBAPk8DcUWWkkqzxca8vbnEw12vUFbBzT6hz8ZB3F3dzUhUXoL2cr1WM1bXQArRCS1MUNMz3X5WDMMQoZKxj2AMTRqp7QQX4dDB9B7VzEZTmyFULhm1AcHHMkoMvSVvKYoBoAKLycYAgMHeD4ECJcGEAGpnkJhrV57zQ7");
-                e.requestMessage.Headers.TryAddWithoutValidation("Origin", requestOrigin);
-                e.requestMessage.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "cross-site");
-                e.requestMessage.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
-                e.requestMessage.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
-                e.requestMessage.Headers.TryAddWithoutValidation("Referer", requestReferer);
-                e.requestMessage.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate, br, zstd");
-
-                if (e.requestMessage.Content?.Headers != null)
-                    e.requestMessage.Content.Headers.Clear();
-                #endregion
-            }
-        };
-    }
-
     public SpectreController() : base(ModInit.conf)
     {
         loadKitInitialization = (j, i, c) =>
@@ -426,13 +305,21 @@ public class SpectreController : BaseOnlineController<ModuleConf>
         if (await IsRequestBlocked(rch: false))
             return badInitMsg;
 
-        ClearConnect();
+        string streamId = !ModInit.conf.mux ? "muxoff"
+            : requestInfo.IsLocalIp || requestInfo.Country == null
+                ? token_movie
+                : requestInfo.IP;
 
-        var result = await goMovie($"{init.linkhost}/?token_movie={token_movie}&token={init.token}", id_file);
+        if (ModInit.conf.debug)
+            Console.WriteLine("streamId: " + streamId);
+
+        var result = await goMovie($"{init.linkhost}/?token_movie={token_movie}&token={init.token}", id_file, streamId);
         if (result.streams.data.Count == 0 || result.wsUri == null)
             return OnError();
 
-        WebSocket(result.wsUri);
+        bool res = await Service.AddOrUpdate(streamId, result.wsUri, result.watch);
+        if (!res)
+            return OnError();
 
         var first = result.streams.Firts();
 
@@ -481,6 +368,7 @@ public class SpectreController : BaseOnlineController<ModuleConf>
         });
     }
     #endregion
+
 
     #region search
     async ValueTask<(bool refresh_proxy, int category_id, JToken data)> search(string token_movie, string imdb_id, long kinopoisk_id, string title, int serial, string original_language, int year)
@@ -550,7 +438,6 @@ public class SpectreController : BaseOnlineController<ModuleConf>
     }
     #endregion
 
-
     #region iframe
     async Task<(JToken all, JToken active)> iframe(string token_movie)
     {
@@ -598,11 +485,12 @@ public class SpectreController : BaseOnlineController<ModuleConf>
     #endregion
 
     #region goMovie
-    async Task<(StreamQualityTpl streams, string wsUri)> goMovie(string uri, long id_file)
+    async Task<(WatchMux watch, StreamQualityTpl streams, string wsUri)> goMovie(string uri, long id_file, string streamId)
     {
         try
         {
             string wsUri = null;
+            WatchMux watch = new();
             var streamquality = new StreamQualityTpl();
 
             using (var browser = new PlaywrightBrowser())
@@ -648,8 +536,8 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                             string json = await fetchResponse.TextAsync().ConfigureAwait(false);
                             var jo = JsonConvert.DeserializeObject<JObject>(json);
 
-                            requestReferer = route.Request.Headers["referer"];
-                            requestOrigin = route.Request.Headers["origin"];
+                            watch.requestReferer = route.Request.Headers["referer"];
+                            watch.requestOrigin = route.Request.Headers["origin"];
 
                             wsUri = jo.Value<string>("pnr") + $"?sid={jo.Value<string>("pnk")}&v=2.1&t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
@@ -670,22 +558,31 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                                 if (string.IsNullOrWhiteSpace(link))
                                     continue;
 
-                                if (string.IsNullOrEmpty(resolution))
-                                    resolution = q.Name;
+                                if (string.IsNullOrEmpty(watch.resolution))
+                                    watch.resolution = q.Name;
 
                                 link = link
                                     .Split(new[] { " or " }, StringSplitOptions.RemoveEmptyEntries)
                                     .FirstOrDefault()
                                     .Trim();
 
-                                streamquality.Append(HostStreamProxy(link, userdata: q.Name), $"{q.Name}p");
+                                var streamData = new StreamData()
+                                {
+                                    id = streamId,
+                                    resolution = q.Name
+                                };
+
+                                streamquality.Append(HostStreamProxy(link, userdata: streamData), $"{q.Name}p");
                             }
 
                             browser.SetPageResult(null);
 
-                            Console.WriteLine("\nReferer: " + requestReferer);
-                            Console.WriteLine("Origin: " + requestOrigin);
-                            Console.WriteLine("resolution: " + resolution);
+                            if (ModInit.conf.debug)
+                            {
+                                Console.WriteLine("\nReferer: " + watch.requestReferer);
+                                Console.WriteLine("Origin: " + watch.requestOrigin);
+                                Console.WriteLine("resolution: " + watch.resolution);
+                            }
 
                             await route.FulfillAsync(new RouteFulfillOptions
                             {
@@ -719,136 +616,11 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                 await browser.WaitPageResult(15);
             }
 
-            return (streamquality, wsUri);
+            return (watch, streamquality, wsUri);
         }
         catch
         {
             return default;
-        }
-    }
-    #endregion
-
-    #region WebSocket
-    async void WebSocket(string wsUri)
-    {
-        try
-        {
-            ws = new ClientWebSocket();
-            ws.Options.SetRequestHeader("User-Agent", Http.UserAgent);
-
-            wscts = new CancellationTokenSource();
-
-            await ws.ConnectAsync(new Uri(wsUri), wscts.Token);
-
-            var receiveBuffer = new byte[16 * 1024];
-
-            _ = Task.Factory.StartNew(async () =>
-            {
-                while (!wscts.Token.IsCancellationRequested && ws.State == WebSocketState.Open)
-                {
-                    var result = await ws.ReceiveAsync(new ArraySegment<byte>(receiveBuffer), wscts.Token);
-                    if (wscts.Token.IsCancellationRequested)
-                        return;
-
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        Console.WriteLine("Connection closed by server");
-                        ClearConnect();
-                        break;
-                    }
-
-                    string message = Encoding.UTF8.GetString(receiveBuffer, 0, result.Count);
-
-                    string hash = Regex.Match(message ?? string.Empty, "\"edge_hash\":\"([^\"]+)\"").Groups[1].Value;
-                    if (!string.IsNullOrEmpty(hash))
-                    {
-                        edge_hash = hash;
-                        Console.WriteLine("edge_hash: " + edge_hash);
-                    }
-                }
-            }, wscts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-
-            _ = Task.Factory.StartNew(async () =>
-            {
-                while (!wscts.Token.IsCancellationRequested && ws.State == WebSocketState.Open)
-                {
-                    try
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(30), wscts.Token);
-                        if (wscts.Token.IsCancellationRequested)
-                            return;
-
-                        Console.WriteLine("current_time: " + current_time);
-                        await WsSendAsync("playing");
-                    }
-                    catch { }
-                }
-            }, wscts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-
-            long unixtime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            await WsSendAsync("playback_start", unixtime);
-            await WsSendAsync("init", unixtime);
-        }
-        catch
-        {
-            ClearConnect();
-        }
-    }
-
-    static Task WsSendAsync(string type, long unixtime = 0)
-    {
-        if (ws == null || ws.State != WebSocketState.Open)
-            return Task.CompletedTask;
-
-        if (unixtime == 0)
-            unixtime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        string payload = JsonConvert.SerializeObject(new
-        {
-            type = type,
-            current_time = current_time,
-            resolution = resolution,
-            track_id = "1",
-            speed = 1,
-            subtitle = -1,
-            ts = unixtime
-        });
-
-        return ws.SendAsync(
-          new ArraySegment<byte>(Encoding.UTF8.GetBytes(payload)),
-          WebSocketMessageType.Text,
-          true,
-          wscts.Token
-        );
-    }
-    #endregion
-
-    #region ClearConnect
-    static void ClearConnect()
-    {
-        edge_hash = null;
-        resolution = null;
-        current_time = 0;
-        lastreq = DateTime.Now;
-
-        if (ws != null)
-        {
-            try
-            {
-                if (wscts != null)
-                {
-                    wscts.Cancel();
-                    wscts = null;
-                }
-            }
-            catch { }
-
-            try
-            {
-                _ = ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-                ws = null;
-            }
-            catch { }
         }
     }
     #endregion
