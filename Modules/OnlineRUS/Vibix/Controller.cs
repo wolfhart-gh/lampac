@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Playwright;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Shared;
 using Shared.Models.Base;
 using Shared.Models.Templates;
-using Shared.Services.Utilities;
+using Shared.PlaywrightCore;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -15,241 +18,264 @@ namespace Vibix;
 
 public class VibixController : BaseOnlineController
 {
-    const string ApiDecoderKey = "RySdvcyu5iTUxn97vn4HwoniwgxaCynA";
-    const bool ApiDecoderUseReverse = true;
-
     public VibixController() : base(ModInit.conf) { }
 
     [HttpGet]
     [Route("lite/vibix")]
     async public Task<ActionResult> Index(string imdb_id, long kinopoisk_id, string title, string original_title, int s = -1, bool rjson = false)
     {
-        if (await IsRequestBlocked(rch: true))
+        if (await IsRequestBlocked(rch: false))
             return badInitMsg;
 
-        if (string.IsNullOrEmpty(init.token))
+        if (string.IsNullOrEmpty(imdb_id) && kinopoisk_id == 0)
             return OnError();
 
-        var data = await search(imdb_id, kinopoisk_id);
-        if (data == null)
-            return OnError();
-
-        rhubFallback:
-        var cache = await InvokeCacheResult<EmbedModel>(ipkey($"vibix:iframe:{data.iframe_url}"), 20, async e =>
+        var cache = await InvokeCacheResult<List<Item>>(ipkey($"vibix:{imdb_id}:{kinopoisk_id}"), 20, async e =>
         {
-            string api_url = data.iframe_url
-                .Replace("/embed/", "/api/v1/embed/")
-                .Replace("/embed-serials/", "/api/v1/embed-serials/");
+            string json = await black_magic(imdb_id, kinopoisk_id);
+            if (string.IsNullOrWhiteSpace(json))
+                return null;
 
-            api_url += $"?iframe_url={HttpUtility.UrlEncode(data.iframe_url)}";
-            api_url += $"&kp={UnicTo.Code(6).ToLower()}";
-            api_url += "&domain=cm.vibix.biz&parent_domain=cm.vibix.biz";
+            List<Item> root = null;
 
-            var api_headers = HeadersModel.Init(
-                ("accept", "*/*"),
-                ("accept-language", "ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5"),
-                ("sec-fetch-dest", "empty"),
-                ("sec-fetch-mode", "cors"),
-                ("sec-fetch-site", "same-origin"),
-                ("referer", data.iframe_url)
-            );
+            try
+            {
+                root = JsonConvert.DeserializeObject<List<Item>>(json);
+            }
+            catch { }
 
-            var root = await httpHydra.Get<JObject>(api_url, addheaders: api_headers);
-            root = DecodeApiResponse(root);
-
-            if (root == null || !root.ContainsKey("data") || root["data"]?["playlist"] == null)
+            if (root == null || root.Count == 0)
                 return e.Fail("root", refresh_proxy: true);
 
-            return e.Success(new EmbedModel() { playlist = root["data"]["playlist"].ToObject<Seasons[]>() });
+            return e.Success(root);
         });
 
-        if (IsRhubFallback(cache))
-            goto rhubFallback;
+        if (!cache.IsSuccess)
+            return OnError(cache.ErrorMsg);
 
-        if (data.type == "movie")
+        if (cache.Value.First().file != null)
         {
             #region Фильм
-            return ContentTpl(cache, () =>
+            var mtpl = new MovieTpl(title, original_title, 1);
+
+            foreach (var movie in cache.Value)
             {
-                var mtpl = new MovieTpl(title, original_title, 1);
+                var streams = new StreamQualityTpl();
 
-                foreach (var movie in cache.Value.playlist)
+                foreach (string q in new string[] { "1080", "720", "480" })
                 {
-                    var streams = new StreamQualityTpl();
+                    var g = new Regex($"{q}p?\\](\\{{[^\\}}]+\\}})?(?<file>https?://[^,\t\\[\\;\\{{ ]+)").Match(movie.file).Groups;
 
-                    foreach (string q in new string[] { "1080", "720", "480" })
+                    if (!string.IsNullOrEmpty(g["file"].Value))
                     {
-                        var g = new Regex($"{q}p?\\](\\{{[^\\}}]+\\}})?(?<file>https?://[^,\t\\[\\;\\{{ ]+)").Match(movie.file).Groups;
-
-                        if (!string.IsNullOrEmpty(g["file"].Value))
-                            streams.Append(HostStreamProxy(g["file"].Value), $"{q}p");
+                        string uri = accsArgs($"{host}/lite/vibix/video.m3u8?id={EncryptQuery(g["file"].Value)}");
+                        streams.Append(uri, $"{q}p");
                     }
-
-                    var first = streams.Firts();
-                    if (first != null)
-                        mtpl.Append(movie.title, first.link, streamquality: streams, vast: init.vast);
                 }
 
-                return mtpl;
-            });
+                var first = streams.Firts();
+                if (first != null)
+                    mtpl.Append(movie.title, first.link, streamquality: streams, vast: init.vast);
+            }
+
+            return ContentTpl(mtpl);
             #endregion
         }
         else
         {
             #region Сериал
-            return ContentTpl(cache, () =>
+            string enc_title = HttpUtility.UrlEncode(title);
+            string enc_original_title = HttpUtility.UrlEncode(original_title);
+
+            if (s == -1)
             {
-                string enc_title = HttpUtility.UrlEncode(title);
-                string enc_original_title = HttpUtility.UrlEncode(original_title);
+                var tpl = new SeasonTpl(cache.Value.Count);
 
-                if (s == -1)
+                foreach (var season in cache.Value)
                 {
-                    var tpl = new SeasonTpl(cache.Value.playlist.Length);
-
-                    foreach (var season in cache.Value.playlist)
+                    string name = season.title;
+                    if (int.TryParse(Regex.Match(name, "([0-9]+)$").Groups[1].Value, out int _s) && _s > 0)
                     {
-                        string name = season.title;
-                        if (int.TryParse(Regex.Match(name, "([0-9]+)$").Groups[1].Value, out int _s) && _s > 0)
-                        {
-                            string link = $"{host}/lite/vibix?rjson={rjson}&kinopoisk_id={kinopoisk_id}&imdb_id={imdb_id}&title={enc_title}&original_title={enc_original_title}&s={_s}";
-                            tpl.Append($"{_s} сезон", link, _s);
-                        }
+                        string link = $"{host}/lite/vibix?rjson={rjson}&kinopoisk_id={kinopoisk_id}&imdb_id={imdb_id}&title={enc_title}&original_title={enc_original_title}&s={_s}";
+                        tpl.Append($"{_s} сезон", link, _s);
                     }
-
-                    return tpl;
                 }
-                else
-                {
-                    var etpl = new EpisodeTpl();
-                    string sArhc = s.ToString();
 
-                    foreach (var season in cache.Value.playlist)
+                return ContentTpl(tpl);
+            }
+            else
+            {
+                var etpl = new EpisodeTpl();
+                string sArhc = s.ToString();
+
+                foreach (var season in cache.Value.Where(i => i.title.EndsWith($" {s}")))
+                {
+                    foreach (var episode in season.folder)
                     {
-                        if (!season.title.EndsWith($" {s}"))
+                        string name = episode.title;
+                        string file = episode.folder?.First().file ?? episode.file;
+
+                        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(file))
                             continue;
 
-                        foreach (var episode in season.folder)
+                        var streams = new StreamQualityTpl();
+
+                        foreach (string q in new string[] { "1080", "720", "480" })
                         {
-                            string name = episode.title;
-                            string file = episode.folder?.First().file ?? episode.file;
-
-                            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(file))
-                                continue;
-
-                            var streams = new StreamQualityTpl();
-
-                            foreach (string q in new string[] { "1080", "720", "480" })
+                            var g = new Regex($"{q}p?\\](\\{{[^\\}}]+\\}})?(?<file>https?://[^,\t\\[\\;\\{{ ]+)").Match(file).Groups;
+                            if (!string.IsNullOrEmpty(g["file"].Value))
                             {
-                                var g = new Regex($"{q}p?\\](\\{{[^\\}}]+\\}})?(?<file>https?://[^,\t\\[\\;\\{{ ]+)").Match(file).Groups;
-                                if (!string.IsNullOrEmpty(g["file"].Value))
-                                    streams.Append(HostStreamProxy(g["file"].Value), $"{q}p");
+                                string uri = accsArgs($"{host}/lite/vibix/video.m3u8?id={EncryptQuery(g["file"].Value)}");
+                                streams.Append(uri, $"{q}p");
                             }
-
-                            var first = streams.Firts();
-                            if (first != null)
-                                etpl.Append(name, title ?? original_title, sArhc, Regex.Match(name, "([0-9]+)").Groups[1].Value, first.link, streamquality: streams, vast: init.vast);
                         }
-                    }
 
-                    return etpl;
+                        var first = streams.Firts();
+                        if (first != null)
+                            etpl.Append(name, title ?? original_title, sArhc, Regex.Match(name, "([0-9]+)").Groups[1].Value, first.link, streamquality: streams, vast: init.vast);
+                    }
                 }
-            });
+
+                return ContentTpl(etpl);
+            }
             #endregion
         }
     }
 
 
-    #region search
-    async ValueTask<Video> search(string imdb_id, long kinopoisk_id)
+    #region Video
+    [HttpGet]
+    [Route("lite/vibix/video.m3u8")]
+    async public Task<ActionResult> Video(string id)
     {
-        string memKey = $"vibix:view:{kinopoisk_id}:{imdb_id}";
+        if (await IsRequestBlocked(rch: false))
+            return badInitMsg;
 
-        if (!hybridCache.TryGetValue(memKey, out Video root))
-        {
-            root = await goSearch(null, kinopoisk_id) ?? await goSearch(imdb_id, 0);
-            if (root == null)
-                return null;
+        string uri = DecryptQuery(id);
+        if (string.IsNullOrEmpty(uri))
+            return OnError();
 
-            proxyManager?.Success();
-            hybridCache.Set(memKey, root, cacheTime(30));
-        }
+        string origin = Regex.Match(uri, "^(https?://[^/]+)").Groups[1].Value;
 
-        return root;
-    }
+        var headers = HeadersModel.Init(
+            ("accept", "*/*"),
+            ("origin", origin),
+            ("referer", $"{origin}/"),
+            ("sec-fetch-dest", "empty"),
+            ("sec-fetch-mode", "cors"),
+            ("sec-fetch-site", "same-site")
+        );
 
-    async Task<Video> goSearch(string imdb_id, long kinopoisk_id)
-    {
-        if (string.IsNullOrEmpty(imdb_id) && kinopoisk_id == 0)
-            return null;
-
-        string uri = kinopoisk_id > 0 ? $"kp/{kinopoisk_id}" : $"imdb/{imdb_id}";
-
-        var video = await httpHydra.Get<Video>($"{init.host}/api/v1/publisher/videos/{uri}", safety: true, addheaders: HeadersModel.Init(
-            ("Accept", "application/json"),
-            ("Authorization", $"Bearer {init.token}"),
-            ("X-CSRF-TOKEN", "")
-        ));
-
-        if (video == null)
-        {
-            proxyManager?.Refresh();
-            return null;
-        }
-
-        if (string.IsNullOrEmpty(video.iframe_url) || string.IsNullOrEmpty(video.type))
-            return null;
-
-        return video;
-    }
-    #endregion
-
-    static JObject DecodeApiResponse(JObject root)
-    {
-        if (root == null)
-            return null;
+        JObject root = await InvokeCache(ipkey($"vibix:{uri}"), 20, async 
+            () => await httpHydra.Get<JObject>(uri, addheaders: headers)
+        );
 
         if (!root.TryGetValue("p", out JToken pToken) || !root.TryGetValue("v", out JToken vToken))
-            return root;
+            return OnError();
 
         int version = vToken.Value<int>();
         string payload = pToken.Value<string>();
 
-        if (string.IsNullOrEmpty(payload))
-            return null;
+        if (string.IsNullOrEmpty(payload) || version != 1)
+            return OnError();
 
+        string data = new string(payload.Reverse().ToArray());
+        byte[] decoded = Convert.FromBase64String(PadBase64(data));
+
+        const string ApiDecoderKey = "RySdvcyu5iTUxn97vn4HwoniwgxaCynA";
+
+        byte[] key = Encoding.ASCII.GetBytes(ApiDecoderKey);
+        for (int i = 0; i < decoded.Length; i++)
+            decoded[i] = (byte)(decoded[i] ^ key[i % key.Length]);
+
+        string m3u8 = Encoding.UTF8.GetString(decoded);
+        m3u8 = Regex.Replace(m3u8, "(https://[^\n\r]+)", u => HostStreamProxy(u.Value, headers));
+
+        return Content(m3u8, "application/vnd.apple.mpegurl");
+    }
+    #endregion
+
+    #region black_magic
+    async Task<string> black_magic(string imdb_id, long kinopoisk_id)
+    {
         try
         {
-            if (version == 0)
-                return JObject.Parse(payload);
+            using (var browser = new PlaywrightBrowser(init.priorityBrowser))
+            {
+                var page = await browser.NewPageAsync(init.plugin, proxy: proxy_data, headers: init.headers).ConfigureAwait(false);
+                if (page == null)
+                    return null;
 
-            if (version != 1)
-                return null;
+                await page.RouteAsync("**/*", async route =>
+                {
+                    try
+                    {
+                        if (route.Request.Url.StartsWith("https://coldfilm.ink"))
+                        {
+                            string target = kinopoisk_id > 0
+                                ? $"data-type=\"kp\" data-id=\"{kinopoisk_id}\""
+                                : $"data-type=\"imdb\" data-id=\"{imdb_id}\"";
 
-            string data = ApiDecoderUseReverse ? Reverse(payload) : payload;
-            byte[] decoded = Convert.FromBase64String(PadBase64(data));
+                            await route.FulfillAsync(new RouteFulfillOptions
+                            {
+                                Body = $@"<html lang=""ru"">
+                                    <head>
+                                        <meta charset=""UTF-8"">
+                                        <script src=""https://graphicslab.io/sdk/v2/rendex-sdk.min.js""></script>
+                                    </head>
+                                    <body>
+                                        <ins data-publisher-id=""674784070"" {target}></ins>
+                                    </body>
+                                </html>"
+                            });
+                        }
+                        else
+                        {
+                            if (route.Request.Url.Contains("/embed.js"))
+                            {
+                                await route.FulfillAsync(new RouteFulfillOptions
+                                {
+                                    Body = System.IO.File.ReadAllText($"{ModInit.path}/embed.js")
+                                });
+                            }
+                            else
+                            {
+                                if (!Regex.IsMatch(route.Request.Url, "(kinescopecdn|graphicslab|coldfilm)\\.") ||
+                                    route.Request.Url.Contains("/index.m3u8"))
+                                {
+                                    await route.AbortAsync();
+                                    return;
+                                }
 
-            byte[] key = Encoding.ASCII.GetBytes(ApiDecoderKey);
-            for (int i = 0; i < decoded.Length; i++)
-                decoded[i] = (byte)(decoded[i] ^ key[i % key.Length]);
+                                if (await PlaywrightBase.AbortOrCache(page, route))
+                                    return;
 
-            string json = Encoding.UTF8.GetString(decoded);
-            return JObject.Parse(json);
+                                await route.ContinueAsync();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Serilog.Log.Error(ex, "{Class} {CatchId}", "Vibix", "id_t2yqc1oa");
+                    }
+                });
+
+                PlaywrightBase.GotoAsync(page, "https://coldfilm.ink/");
+
+                var frame = page.FrameLocator("iframe[src*='kinescopecdn.net']");
+
+                await frame.Locator("#playerjsfile").WaitForAsync(new()
+                {
+                    Timeout = 10000
+                });
+
+                return await frame.Locator("#playerjsfile").TextContentAsync();
+            }
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
+    #endregion
 
-    static string Reverse(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        char[] chars = value.ToCharArray();
-        Array.Reverse(chars);
-        return new string(chars);
-    }
 
     static string PadBase64(string value)
     {
