@@ -6,6 +6,8 @@ namespace Spectre;
 
 public class WatchMux : IDisposable
 {
+    public string streamId { get; set; }
+
     public ClientWebSocket ws { get; set; }
 
     public CancellationTokenSource wscts { get; set; }

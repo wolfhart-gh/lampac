@@ -189,6 +189,9 @@ public static class Service
                     {
                         if (ModInit.conf.debug)
                             Console.WriteLine("Connection closed by server");
+
+                        watchs.TryRemove(watch.streamId, out _);
+                        watch.Dispose();
                         return;
                     }
 

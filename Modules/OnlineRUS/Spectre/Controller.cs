@@ -490,7 +490,8 @@ public class SpectreController : BaseOnlineController<ModuleConf>
         try
         {
             string wsUri = null;
-            WatchMux watch = new();
+            var watch = new WatchMux() { streamId = streamId };
+
             var streamquality = new StreamQualityTpl();
 
             using (var browser = new PlaywrightBrowser())
@@ -604,6 +605,9 @@ public class SpectreController : BaseOnlineController<ModuleConf>
                                 await route.AbortAsync();
                                 return;
                             }
+
+                            if (await PlaywrightBase.AbortOrCache(page, route))
+                                return;
 
                             await route.ContinueAsync();
                         }
