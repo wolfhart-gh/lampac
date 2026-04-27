@@ -114,7 +114,7 @@ public class KinobaseController : BaseOnlineController<ModuleConf>
                         {
                             await route.FulfillAsync(new RouteFulfillOptions
                             {
-                                Body = System.IO.File.ReadAllText("data/kinobase_playerjs.js")
+                                Body = ModInit.playerjs
                             });
 
                             return;
@@ -123,7 +123,7 @@ public class KinobaseController : BaseOnlineController<ModuleConf>
                         {
                             await route.FulfillAsync(new RouteFulfillOptions
                             {
-                                Body = System.IO.File.ReadAllText("data/kinobase_uppod.js")
+                                Body = ModInit.uppod
                             });
 
                             return;
