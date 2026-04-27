@@ -2,7 +2,7 @@
 
 public static class IPNetwork
 {
-    public static bool IsLocalIp(ReadOnlySpan<char> ip, bool forced)
+    public static bool IsLocalIp(ReadOnlySpan<char> ip, bool forced = false)
     {
         if (ip.IsEmpty || (!forced && CoreInit.conf.BaseModule.NotCheckLocalIp))
             return false;
