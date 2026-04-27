@@ -48,6 +48,9 @@ public class BamBooController : BaseOnlineController
 
             return ContentTpl(search, () =>
             {
+                if (search.Value.similars == null)
+                    return default;
+
                 var stpl = new SimilarTpl(search.Value.similars.Count);
 
                 string enc_title = HttpUtility.UrlEncode(title);

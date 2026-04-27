@@ -7,12 +7,14 @@ using Shared.PlaywrightCore;
 using Shared.Services;
 using System.Collections.Generic;
 using Shared;
+using System.IO;
 
 namespace Kinobase;
 
 public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
 {
     public static ModuleConf conf;
+    public static string uppod, playerjs;
 
     public List<ModuleOnlineItem> Invoke(HttpContext httpContext, RequestModel requestInfo, string host, OnlineEventsModel args)
     {
@@ -39,6 +41,9 @@ public class ModInit : IModuleLoaded, IModuleOnline, IModuleOnlineSpider
     public void Loaded(InitspaceModel baseconf)
     {
         CoreInit.conf.online.with_search.Add("kinobase");
+
+        uppod = File.ReadAllText($"{baseconf.path}/players/uppod.js");
+        playerjs = File.ReadAllText($"{baseconf.path}/players/playerjs.js");
 
         updateConf();
         EventListener.UpdateInitFile += updateConf;

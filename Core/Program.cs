@@ -15,7 +15,6 @@ using Shared.Services.Hybrid;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -52,6 +51,7 @@ public class Program
             {
                 var loadedAssembly = Assembly.LoadFrom(dllPath);
                 AssemblyLocations.Add(loadedAssembly.Location);
+
             }
 
             AssemblyLoadContext.Default.Resolving += (context, assemblyName) =>

@@ -332,7 +332,7 @@ public class KinogoController : BaseOnlineController
                         <html lang=""ru"">
                           <body>
                             <script>
-                              {FileCache.ReadAllText("data/cinemar_playerjs.js")}
+                              {ModInit.playerjs}
                               Cinemar({{""file"":""{fileEncode}""}})
                             </script>
                           </body>
