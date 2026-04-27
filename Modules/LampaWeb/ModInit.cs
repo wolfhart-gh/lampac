@@ -57,7 +57,7 @@ public class ModInit : IModuleLoaded
     {
         var accsdb = CoreInit.conf.accsdb;
 
-        if (accsdb.enable && 
+        if (accsdb.enable &&
             accsdb.shared_passwd != null &&
             e.httpContext.Request.Path.Value.Equals("/testaccsdb", StringComparison.OrdinalIgnoreCase) &&
             e.requestInfo.user_uid == accsdb.shared_passwd)
